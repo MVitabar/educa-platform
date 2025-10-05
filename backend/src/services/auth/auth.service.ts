@@ -7,9 +7,11 @@ import crypto from 'crypto';
 import config from '../../config';
 
 // Tipos para los tokens
-interface TokenPayload {
+export interface TokenPayload extends jwt.JwtPayload {
   id: string;
   role: UserRole;
+  iat?: number;
+  exp?: number;
 }
 
 // Tipo para el documento de usuario con métodos
@@ -219,51 +221,53 @@ export const forgotPassword = async (email: string): Promise<{ message: string }
  * @param newPassword Nueva contraseña
  * @returns Usuario actualizado y token de autenticación
  */
-export const resetPassword = async (
-  token: string,
-  newPassword: string
-): Promise<{ user: Omit<IUser, 'password'>; token: string }> => {
-  const hashedToken = crypto
-    .createHash('sha256')
-    .update(token)
-    .digest('hex');
+const resetPassword = async (token: string, newPassword: string) => {
+  try {
+    // 1) Get user based on the token
+    const hashedToken = crypto
+      .createHash('sha256')
+      .update(token)
+      .digest('hex');
 
-  // 2) Buscar usuario por el token y verificar que no haya expirado
-  const user = await User.findOne({
-    passwordResetToken: hashedToken,
-    passwordResetExpires: { $gt: Date.now() },
-  });
+    const user = await User.findOne({
+      passwordResetToken: hashedToken,
+      passwordResetExpires: { $gt: Date.now() }
+    }) as IUser & { _id: Types.ObjectId };
 
-  if (!user) {
-    throw new ApiError(400, 'El token es inválido o ha expirado');
+    // 2) If token has not expired, and there is user, set the new password
+    if (!user) {
+      throw new ApiError(400, 'El token es inválido o ha expirado');
+    }
+
+    user.password = newPassword;
+    user.passwordResetToken = undefined;
+    user.passwordResetExpires = undefined;
+    await user.save();
+
+    // 3) Update changedPasswordAt property for the user
+    // This is handled by a pre-save hook in the User model
+
+    // 4) Log the user in, send JWT
+    const tokenPayload: TokenPayload = {
+      id: user._id.toString(),
+      role: user.role
+    };
+
+    const authToken = generateToken(tokenPayload);
+
+    // Remove password from output
+    const userObj = user.toObject();
+    const { password: _, ...userResponse } = userObj as any;
+    const safeUserResponse = JSON.parse(JSON.stringify(userResponse)) as Omit<IUser, 'password'>;
+    
+    return { 
+      user: safeUserResponse,
+      token: authToken 
+    };
+  } catch (error) {
+    if (error instanceof ApiError) {
+      throw error;
+    }
+    throw new ApiError(500, 'Error al restablecer la contraseña');
   }
-
-  // 3) Actualizar la contraseña y limpiar los campos de restablecimiento
-  user.password = newPassword;
-  (user as any).passwordResetToken = undefined;
-  (user as any).passwordResetExpires = undefined;
-  await user.save();
-
-  // 4) Generar nuevo token
-  const userId = (user as any)._id?.toString();
-  if (!userId) {
-    throw new ApiError(500, 'Error al procesar la solicitud');
-  }
-  
-  const authToken = generateToken({ 
-    id: userId,
-    role: user.role 
-  });
-
-  // No devolver la contraseña en la respuesta
-  const userObj = user.toObject();
-  const { password: _, ...userResponse } = userObj as any;
-  
-  // Convertir a un objeto plano para evitar problemas de tipo con el documento de Mongoose
-  const safeUserResponse = JSON.parse(JSON.stringify(userResponse)) as Omit<IUser, 'password'>;
-  
-  return { 
-    user: safeUserResponse,
-    token: authToken 
-  };
-}
+};

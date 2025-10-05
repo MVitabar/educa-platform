@@ -11,6 +11,13 @@ interface IAuthenticatedRequest extends Request {
 
 /**
  * @swagger
+ * tags:
+ *   name: Sections
+ *   description: Gestión de secciones de cursos
+ */
+
+/**
+ * @swagger
  * components:
  *   schemas:
  *     Section:
@@ -48,6 +55,75 @@ interface IAuthenticatedRequest extends Request {
  *           description: Orden de la sección dentro del curso
  *         isPublished:
  *           type: boolean
+ *           default: false
+ *           description: Indica si la sección está publicada
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           description: Fecha de creación de la sección
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *           description: Fecha de última actualización
+ * 
+ *     CreateSectionInput:
+ *       type: object
+ *       required:
+ *         - title
+ *         - course
+ *         - order
+ *       properties:
+ *         title:
+ *           type: string
+ *           minLength: 3
+ *           maxLength: 100
+ *           example: 'Introducción al curso'
+ *         description:
+ *           type: string
+ *           maxLength: 500
+ *           example: 'En esta sección aprenderás los conceptos básicos'
+ *         course:
+ *           type: string
+ *           format: ObjectId
+ *           example: 5f8d0f4d7f4f1d4e3c8d9e0f
+ *         order:
+ *           type: integer
+ *           minimum: 0
+ *           example: 1
+ *         isPublished:
+ *           type: boolean
+ *           default: false
+ * 
+ *     UpdateSectionInput:
+ *       type: object
+ *       properties:
+ *         title:
+ *           type: string
+ *           minLength: 3
+ *           maxLength: 100
+ *           example: 'Introducción al curso actualizada'
+ *         description:
+ *           type: string
+ *           maxLength: 500
+ *           example: 'Contenido actualizado de la sección'
+ *         order:
+ *           type: integer
+ *           minimum: 0
+ *           example: 2
+ *         isPublished:
+ *           type: boolean
+ *           example: true
+ * 
+ *     SectionWithLessons:
+ *       allOf:
+ *         - $ref: '#/components/schemas/Section'
+ *         - type: object
+ *           properties:
+ *             lessons:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Lesson'
+ *               description: Lista de lecciones de la sección
  *           default: false
  *           example: true
  *           description: Indica si la sección está publicada

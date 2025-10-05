@@ -1,3 +1,5 @@
+// backend/src/routes/auth.routes.ts
+
 import express, { Router } from 'express';
 import { body } from 'express-validator';
 import * as authController from '../controllers/auth.controller';
@@ -29,27 +31,42 @@ const validateResetPassword = [
     .withMessage('La contraseña debe tener al menos 6 caracteres')
 ];
 
-// Rutas públicas
+// =====================================
+// RUTAS PÚBLICAS (sin autenticación)
+// =====================================
+
+// Registro de nuevo usuario
 router.post('/register', validateRegister, authController.register);
+
+// Inicio de sesión
 router.post('/login', validateLogin, authController.login);
+
+// Olvidé mi contraseña
 router.post('/forgot-password', validateForgotPassword, authController.forgotPassword);
+
+// Restablecer contraseña
 router.patch('/reset-password/:token', validateResetPassword, authController.resetPassword);
 
-// Middleware de autenticación para las rutas siguientes
-const protectedRouter = express.Router();
-protectedRouter.use(protect);
+// =====================================
+// RUTAS PROTEGIDAS (requieren autenticación)
+// =====================================
+router.use(protect); // Aplica el middleware de autenticación a todas las rutas siguientes
 
-// Rutas protegidas (requieren autenticación)
-protectedRouter.get('/me', authController.getMe);
-protectedRouter.patch('/update-password', [
+// Obtener perfil del usuario actual
+router.get('/me', authController.getMe);
+
+// Actualizar perfil
+router.patch('/me', authController.updateProfile);
+
+// Actualizar contraseña
+router.patch('/me/password', [
   body('currentPassword').notEmpty().withMessage('La contraseña actual es requerida'),
   body('newPassword')
     .isLength({ min: 6 })
     .withMessage('La nueva contraseña debe tener al menos 6 caracteres')
 ], authController.updatePassword);
-protectedRouter.post('/logout', authController.logout);
 
-// Mount protected routes under the main router
-router.use('', protectedRouter);
+// Cerrar sesión
+router.post('/logout', authController.logout);
 
 export default router;

@@ -1,40 +1,26 @@
-import express, { Router } from 'express';
+import { Router } from 'express';
 import * as sectionController from '../controllers/sections.controller';
 import { protect, restrictTo } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Rutas públicas
-router.get('/:id', sectionController.getSection);
-router.get('/course/:courseId', sectionController.getSectionsByCourse);
-
-// Rutas protegidas (requieren autenticación)
+// Apply authentication to all routes
 router.use(protect);
 
-// Rutas solo para instructores y admin
+// Get all sections for a course
+router.get('/courses/:courseId/sections', sectionController.getSectionsByCourse);
+
+// Instructor-only routes
 router.post(
-  '/',
-  restrictTo('instructor', 'admin'),
+  '/courses/:courseId/sections',
+  restrictTo('instructor'),
   sectionController.createSection
 );
 
-// Ruta para reordenar secciones
-router.post(
-  '/reorder',
-  restrictTo('instructor', 'admin'),
-  sectionController.reorderSections
-);
-
-// Rutas para instructores (del curso) o admin
+// Section management routes (instructor only)
 router
-  .route('/:id')
-  .put(
-    restrictTo('instructor', 'admin'),
-    sectionController.updateSection
-  )
-  .delete(
-    restrictTo('instructor', 'admin'),
-    sectionController.deleteSection
-  );
+  .route('/courses/:courseId/sections/:id')
+  .put(restrictTo('instructor'), sectionController.updateSection)
+  .delete(restrictTo('instructor', 'admin'), sectionController.deleteSection);
 
 export default router;

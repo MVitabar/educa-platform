@@ -1,32 +1,26 @@
-import express, { Router } from 'express';
-import { protect } from '../middlewares/auth.middleware';
+import { Router } from 'express';
+import * as reviewController from '../controllers/reviews.controller';
+import { protect, restrictTo } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Import controllers (to be created)
-// import * as reviewController from '../controllers/reviews.controller';
-
 // Public routes
-// router.get('/', reviewController.getReviews);
-// router.get('/course/:courseId', reviewController.getCourseReviews);
-// router.get('/:id', reviewController.getReview);
+router.get('/courses/:courseId/reviews', reviewController.getCourseReviews);
 
-// Protected routes (require authentication)
+// Protected routes
 router.use(protect);
 
 // Student routes
-// router.post('/', reviewController.createReview);
-// router.get('/my-reviews', reviewController.getMyReviews);
+router.post(
+  '/courses/:courseId/reviews',
+  restrictTo('student'),
+  reviewController.createReview
+);
 
-// Routes for review owner or admin
-// router.route('/:id')
-//   .patch(
-//     reviewController.restrictToReviewOwner,
-//     reviewController.updateReview
-//   )
-//   .delete(
-//     reviewController.restrictToReviewOwner,
-//     reviewController.deleteReview
-//   );
+// Review owner or admin
+router
+  .route('/reviews/:id')
+  .put(reviewController.updateReview)
+  .delete(reviewController.deleteReview);
 
 export default router;

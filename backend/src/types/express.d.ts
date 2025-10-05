@@ -1,10 +1,9 @@
-import { Types } from 'mongoose';
-import { IUser } from '../types/user.types';
+import { UserDocument } from '../types/user.types';
 
 declare global {
   namespace Express {
     interface Request {
-      user?: IUser & { _id: Types.ObjectId };
+      user?: UserDocument;
       body: any;
       params: any;
       query: any;

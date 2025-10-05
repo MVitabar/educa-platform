@@ -1,24 +1,25 @@
-import express, { Router } from 'express';
+import { Router } from 'express';
 import * as courseController from '../controllers/courses.controller';
 import { protect, restrictTo } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Rutas públicas
+// Public routes
 router.get('/', courseController.getCourses);
 router.get('/:id', courseController.getCourse);
+router.get('/categories/:categoryId/courses', courseController.getCoursesByCategory);
 
-// Rutas protegidas (requieren autenticación)
+// Protected routes (require authentication)
 router.use(protect);
 
-// Rutas solo para instructores
+// Instructor-only routes
 router.post(
   '/',
   restrictTo('instructor', 'admin'),
   courseController.createCourse
 );
 
-// Rutas para instructores (dueños del curso) o admin
+// Course management routes (instructor or admin)
 router
   .route('/:id')
   .put(

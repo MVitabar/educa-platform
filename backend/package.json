@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "description": "Backend for Educa Platform - An educational platform with courses and lessons",
   "main": "dist/index.js",
-  "scripts": {
+ "scripts": {
     "dev": "ts-node-dev --respawn --transpile-only --ignore-watch node_modules --no-notify src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",

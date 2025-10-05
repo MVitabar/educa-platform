@@ -3,15 +3,19 @@
 import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Lock, Mail, Eye, EyeOff, Loader2 } from 'lucide-react';
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
     email: '',
     password: '',
   });
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const router = useRouter();
+  
+  const togglePasswordVisibility = () => setShowPassword(!showPassword);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -21,168 +25,252 @@ export default function LoginPage() {
     }));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+const handleSubmit = async (e: React.FormEvent) => {
+  e.preventDefault();
+  setError('');
+  console.log('=== Iniciando proceso de login ===');
+  console.log('Email ingresado:', formData.email);
 
-    if (!formData.email || !formData.password) {
-      setError('Por favor ingresa tu correo y contraseña');
-      return;
-    }
+  if (!formData.email || !formData.password) {
+    const errorMsg = 'Por favor ingresa tu correo y contraseña';
+    console.error('Error de validación:', errorMsg);
+    setError(errorMsg);
+    return;
+  }
 
+  try {
+    setIsLoading(true);
+    const apiUrl = `${process.env.NEXT_PUBLIC_API_URL}/auth/login`;
+    console.log('URL de la API:', apiUrl);
+    
+    const requestBody = {
+      email: formData.email,
+      password: formData.password,
+    };
+    
+    console.log('Cuerpo de la solicitud:', JSON.stringify(requestBody, null, 2));
+    
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify(requestBody),
+    });
+
+    console.log('Código de estado de la respuesta:', response.status);
+    
+    let data;
     try {
-      setIsLoading(true);
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          email: formData.email,
-          password: formData.password,
-        }),
-      });
-
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.message || 'Error al iniciar sesión');
-      }
-
-      // Save token to localStorage or context
-      if (data.token) {
-        localStorage.setItem('token', data.token);
-      }
-
-      // Redirect to dashboard after successful login
-      router.push('/dashboard');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Error al iniciar sesión');
-    } finally {
-      setIsLoading(false);
+      data = await response.json();
+      console.log('Datos de la respuesta:', JSON.stringify(data, null, 2));
+    } catch (jsonError) {
+      console.error('Error al parsear la respuesta JSON:', jsonError);
+      throw new Error('Error en la respuesta del servidor');
     }
-  };
+
+    if (!response.ok) {
+      const errorMsg = data?.message || `Error al iniciar sesión (${response.status})`;
+      console.error('Error en la respuesta:', errorMsg);
+      throw new Error(errorMsg);
+    }
+
+    // Verificar que la respuesta tenga la estructura esperada
+    if (!data.token || !data.data?.user) {
+      console.error('Respuesta inesperada del servidor:', data);
+      throw new Error('Formato de respuesta inesperado del servidor');
+    }
+
+    console.log('Token recibido, guardando en localStorage...');
+    localStorage.setItem('token', data.token);
+    
+    const userData = data.data.user;
+    const userRole = userData.role || 'student';
+    
+    console.log('Rol del usuario:', userRole);
+    console.log('Datos del usuario:', JSON.stringify(userData, null, 2));
+    
+    localStorage.setItem('userRole', userRole);
+    localStorage.setItem('userData', JSON.stringify(userData));
+    
+    console.log(`Redirigiendo a /${userRole}/dashboard`);
+    router.push(`/${userRole}/dashboard`);
+    
+  } catch (err) {
+    const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión';
+    console.error('Error en handleSubmit:', errorMessage, err);
+    setError(errorMessage);
+  } finally {
+    setIsLoading(false);
+  }
+};
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col justify-center py-12 sm:px-6 lg:px-8">
-      <div className="sm:mx-auto sm:w-full sm:max-w-md">
-        <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-          Iniciar sesión
-        </h2>
-        <p className="mt-2 text-center text-sm text-gray-600">
-          ¿No tienes una cuenta?{' '}
-          <Link href="/registro" className="font-medium text-primary-600 hover:text-primary-500">
-            Regístrate aquí
-          </Link>
-        </p>
-      </div>
+    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-primary-50 to-secondary-50 p-4">
+      <Link 
+        href="/" 
+        className="absolute top-4 left-4 flex items-center text-custom-4 hover:text-custom-3 transition-colors"
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 mr-1" viewBox="0 0 20 20" fill="currentColor">
+          <path fillRule="evenodd" d="M9.707 16.707a1 1 0 01-1.414 0l-6-6a1 1 0 010-1.414l6-6a1 1 0 011.414 1.414L5.414 9H17a1 1 0 110 2H5.414l4.293 4.293a1 1 0 010 1.414z" clipRule="evenodd" />
+        </svg>
+        Volver al inicio
+      </Link>
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-2xl shadow-xl overflow-hidden">
+          {/* Header */}
+          <div className="bg-gradient-to-r from-custom-4 to-custom-3 p-8 text-center">
+            <h1 className="text-3xl font-bold text-custom-3">Bienvenido</h1>
+            <p className="mt-2 text-custom-3">Inicia sesión para continuar</p>
+          </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md">
-        <div className="bg-white py-8 px-4 shadow sm:rounded-lg sm:px-10">
-          {error && (
-            <div className="mb-4 bg-red-50 border-l-4 border-red-400 p-4">
-              <div className="flex">
-                <div className="flex-shrink-0">
-                  <svg className="h-5 w-5 text-red-400" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
-                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
-                  </svg>
+          {/* Formulario */}
+          <div className="p-8">
+            {error && (
+              <div className="mb-6 bg-red-50 border-l-4 border-red-500 p-4 rounded-r">
+                <div className="flex items-center">
+                  <div className="flex-shrink-0">
+                    <svg className="h-5 w-5 text-red-500" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.707 7.293a1 1 0 00-1.414 1.414L8.586 10l-1.293 1.293a1 1 0 101.414 1.414L10 11.414l1.293 1.293a1 1 0 001.414-1.414L11.414 10l1.293-1.293a1 1 0 00-1.414-1.414L10 8.586 8.707 7.293z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+                  <div className="ml-3">
+                    <p className="text-sm text-red-700">{error}</p>
+                  </div>
                 </div>
-                <div className="ml-3">
-                  <p className="text-sm text-red-700">{error}</p>
+              </div>
+            )}
+
+            <form className="space-y-6" onSubmit={handleSubmit}>
+              <div>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">
+                  Correo electrónico
+                </label>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Mail className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="email"
+                    name="email"
+                    type="email"
+                    autoComplete="email"
+                    required
+                    value={formData.email}
+                    onChange={handleChange}
+                    className="focus:ring-2 focus:ring-custom-4 focus:border-custom-4 block w-full pl-10 pr-3 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none transition duration-150 ease-in-out"
+                    placeholder="tu@email.com"
+                  />
                 </div>
               </div>
-            </div>
-          )}
 
-          <form className="space-y-6" onSubmit={handleSubmit}>
-            <div>
-              <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-                Correo electrónico
-              </label>
-              <div className="mt-1">
-                <input
-                  id="email"
-                  name="email"
-                  type="email"
-                  autoComplete="email"
-                  required
-                  value={formData.email}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+                    Contraseña
+                  </label>
+                  <Link href="/olvide-contrasena" className="text-sm text-custom-4 hover:text-custom-3 transition-colors">
+                    ¿Olvidaste tu contraseña?
+                  </Link>
+                </div>
+                <div className="relative rounded-md shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Lock className="h-5 w-5 text-gray-400" />
+                  </div>
+                  <input
+                    id="password"
+                    name="password"
+                    type={showPassword ? 'text' : 'password'}
+                    autoComplete="current-password"
+                    required
+                    value={formData.password}
+                    onChange={handleChange}
+                    className="focus:ring-2 focus:ring-custom-4 focus:border-custom-4 block w-full pl-10 pr-10 py-3 border border-gray-300 rounded-lg placeholder-gray-400 focus:outline-none transition duration-150 ease-in-out"
+                    placeholder="••••••••"
+                  />
+                  <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                    <button
+                      type="button"
+                      onClick={togglePasswordVisibility}
+                      className="text-gray-400 hover:text-gray-500 focus:outline-none"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <div>
-              <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-                Contraseña
-              </label>
-              <div className="mt-1">
-                <input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                  value={formData.password}
-                  onChange={handleChange}
-                  className="appearance-none block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 sm:text-sm"
-                />
+              <div className="flex items-center justify-between">
+                <div className="flex items-center">
+                  <input
+                    id="remember-me"
+                    name="remember-me"
+                    type="checkbox"
+                    className="h-4 w-4 text-custom-4 focus:ring-custom-4 border-gray-300 rounded"
+                  />
+                  <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-700">
+                    Recordar mi sesión
+                  </label>
+                </div>
               </div>
-              <div className="text-sm text-right mt-1">
-                <Link href="/olvide-contrasena" className="font-medium text-primary-600 hover:text-primary-500">
-                  ¿Olvidaste tu contraseña?
+
+              <div>
+                <button
+                  type="submit"
+                  disabled={isLoading}
+                  className={`group relative w-full flex justify-center py-3 px-4 bg-custom-4 border border-transparent text-sm font-medium rounded-lg text-white bg-gradient-to-r from-custom-4 to-custom-3 hover:from-custom-5 hover:to-custom-4 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-custom-4 shadow-md transition duration-150 ease-in-out ${isLoading ? 'opacity-80' : ''}`}
+                >
+                  {isLoading ? (
+                    <>
+                      <Loader2 className="animate-spin -ml-1 mr-2 h-5 w-5 text-white" />
+                      Iniciando sesión...
+                    </>
+                  ) : (
+                    'Iniciar sesión'
+                  )}
+                </button>
+              </div>
+            </form>
+
+            <div className="mt-6">
+              <div className="relative">
+                <div className="absolute inset-0 flex items-center">
+                  <div className="w-full border-t border-gray-300"></div>
+                </div>
+                <div className="relative flex justify-center text-sm">
+                  <span className="px-2 bg-white text-gray-500">¿No tienes una cuenta?</span>
+                </div>
+              </div>
+
+              <div className="mt-6">
+                <Link
+                  href="/registro"
+                  className="w-full flex justify-center py-2 px-4 border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-custom-4 transition duration-150 ease-in-out"
+                >
+                  Regístrate ahora
                 </Link>
               </div>
             </div>
-
-            <div>
-              <button
-                type="submit"
-                disabled={isLoading}
-                className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-custom-4 hover:bg-custom-5 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-primary-500 disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                {isLoading ? 'Iniciando sesión...' : 'Iniciar sesión'}
-              </button>
-            </div>
-          </form>
-
-          <div className="mt-6">
-            <div className="relative">
-              <div className="absolute inset-0 flex items-center">
-                <div className="w-full border-t border-gray-300"></div>
-              </div>
-              <div className="relative flex justify-center text-sm">
-                <span className="px-2 bg-white text-gray-500">O inicia sesión con</span>
-              </div>
-            </div>
-
-            <div className="mt-6 grid grid-cols-2 gap-3">
-              <div>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Iniciar sesión con Google</span>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24" aria-hidden="true">
-                    <path d="M12.48 10.92v3.28h7.84c-.24 1.84-.853 3.187-1.787 4.133-1.147 1.147-2.933 2.4-6.053 2.4-4.827 0-8.6-3.893-8.6-8.72s3.773-8.72 8.6-8.72c2.6 0 4.507 1.027 5.907 2.347l2.307-2.307C18.747 1.44 16.133 0 12.48 0 5.867 0 .307 5.387.307 12s5.56 12 12.173 12c3.573 0 6.267-1.173 8.373-3.36 2.16-2.16 2.84-5.213 2.84-7.667 0-.76-.053-1.467-.173-2.053H12.48z" />
-                  </svg>
-                </a>
-              </div>
-
-              <div>
-                <a
-                  href="#"
-                  className="w-full inline-flex justify-center py-2 px-4 border border-gray-300 rounded-md shadow-sm bg-white text-sm font-medium text-gray-500 hover:bg-gray-50"
-                >
-                  <span className="sr-only">Iniciar sesión con Microsoft</span>
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 21 21">
-                    <path d="M1 1h9v9H1V1zm0 10h9v9H1v-9zm10 0h9v9h-9v-9zm0-10h9v9h-9V1z"/>
-                  </svg>
-                </a>
-              </div>
-            </div>
           </div>
+        </div>
+
+        <div className="mt-6 text-center">
+          <p className="text-xs text-custom-4">
+            Al continuar, aceptas nuestros{' '}
+              <a href="#" className="text-custom-4 hover:text-custom-3 transition-colors">
+              Términos de servicio
+            </a>{' '}
+            y{' '}
+              <a href="#" className="text-custom-4 hover:text-custom-3 transition-colors">
+              Política de privacidad
+            </a>
+            .
+          </p>
         </div>
       </div>
     </div>

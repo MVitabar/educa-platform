@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import ClientLayout from "@/components/ClientLayout";
 
 const inter = Inter({ subsets: ["latin"], variable: "--font-inter" });
 
@@ -50,6 +51,8 @@ export const viewport: Viewport = {
   userScalable: false,
 };
 
+
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -57,8 +60,10 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" className={inter.variable}>
-      <body className="min-h-screen bg-white dark:bg-dark-900 text-dark-900 dark:text-white">
-        {children}
+      <body className={`${inter.className} h-full bg-gray-50 dark:bg-gray-900`}>
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   );

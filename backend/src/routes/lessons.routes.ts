@@ -4,31 +4,26 @@ import { protect, restrictTo } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Rutas públicas
-router.get('/:id', lessonController.getLesson);
-router.get('/course/:courseId', lessonController.getLessonsByCourse);
-router.get('/section/:sectionId', lessonController.getLessonsBySection);
-
-// Rutas protegidas (requieren autenticación)
+// Apply authentication to all routes
 router.use(protect);
 
-// Rutas solo para instructores y admin
+// Get all lessons in a section
+router.get('/sections/:sectionId/lessons', lessonController.getLessons);
+
+// Create a new lesson in a section (instructor only)
 router.post(
-  '/',
-  restrictTo('instructor', 'admin'),
+  '/sections/:sectionId/lessons',
+  restrictTo('instructor'),
   lessonController.createLesson
 );
 
-// Rutas para instructores (del curso) o admin
+// Get a specific lesson
+router.get('/lessons/:id', lessonController.getLesson);
+
+// Update or delete a lesson (instructor only)
 router
-  .route('/:id')
-  .put(
-    restrictTo('instructor', 'admin'),
-    lessonController.updateLesson
-  )
-  .delete(
-    restrictTo('instructor', 'admin'),
-    lessonController.deleteLesson
-  );
+  .route('/lessons/:id')
+  .put(restrictTo('instructor'), lessonController.updateLesson)
+  .delete(restrictTo('instructor'), lessonController.deleteLesson);
 
 export default router;

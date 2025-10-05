@@ -1,16 +1,16 @@
 import { Request, Response, NextFunction } from 'express';
-import { verifyToken } from '../services/auth/auth.service';
+import { verifyToken, TokenPayload } from '../services/auth/auth.service';
 import User from '../models/user.model';
 import { ApiError } from '../utils/apiError';
+import { IUser } from '../types/user.types';
 
-// Interfaz extendida para incluir la propiedad user
-export interface AuthenticatedRequest extends Request {
-  user?: any; // Cambiar 'any' por la interfaz de tu modelo de usuario si está disponible
-}
+import { Types } from 'mongoose';
 
-// Middleware para proteger rutas
+import { UserDocument } from '../types/user.types';
+
+// Middleware to protect routes
 export const protect = async (
-  req: AuthenticatedRequest,
+  req: Request,
   res: Response,
   next: NextFunction
 ) => {
@@ -36,7 +36,7 @@ export const protect = async (
     const decoded = verifyToken(token);
 
     // 3) Verificar si el usuario aún existe
-    const currentUser = await User.findById(decoded.id);
+    const currentUser = await User.findById(decoded.id).select('+password +passwordChangedAt +__v');
     if (!currentUser) {
       return next(
         new ApiError(401, 'El usuario correspondiente a este token ya no existe')
@@ -44,24 +44,26 @@ export const protect = async (
     }
 
     // 4) Verificar si el usuario cambió la contraseña después de que se emitió el token
-    if (decoded.iat && currentUser.changedPasswordAfter(decoded.iat)) {
+    const issuedAt = decoded.iat;
+    if (issuedAt && currentUser.changedPasswordAfter(issuedAt)) {
       return next(
         new ApiError(401, 'El usuario cambió recientemente su contraseña. Por favor inicia sesión de nuevo')
       );
     }
 
     // 5) Otorgar acceso a la ruta protegida
-    req.user = currentUser;
-    next();
+    // Type assertion to UserDocument since we know the shape matches
+    req.user = currentUser as unknown as UserDocument;
+    next(); // Continuar al siguiente middleware/controlador
   } catch (error) {
-    next(error);
+    next(error as ApiError);
   }
 };
 
-// Middleware para restringir el acceso por roles
+// Middleware to restrict access by roles
 export const restrictTo = (...roles: string[]) => {
-  return (req: AuthenticatedRequest, res: Response, next: NextFunction) => {
-    if (!roles.includes(req.user.role)) {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user || !roles.includes(req.user.role)) {
       return next(
         new ApiError(403, 'No tienes permiso para realizar esta acción')
       );

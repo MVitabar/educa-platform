@@ -58,6 +58,13 @@ export interface IUserMethods {
   canViewCourse(courseId: Types.ObjectId | string): Promise<boolean>;
 }
 
+// Type for the user document that includes MongoDB document properties
+export type UserDocument = IUser & Document & {
+  _id: Types.ObjectId;
+  __v: number;
+  // Add other document methods if needed
+};
+
 export interface IUser extends Document, IUserMethods {
   // Identification
   name: string;

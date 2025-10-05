@@ -1,7 +1,22 @@
 import { Request, Response, NextFunction } from 'express';
-import { Types } from 'mongoose';
+import { Types, SortOrder } from 'mongoose';
 import Course from '../models/course.model';
+import { Category } from '../models/category.model';
 import { ApiError } from '../utils/apiError';
+
+interface CourseQuery {
+  isPublished: boolean;
+  category?: string;
+  level?: 'beginner' | 'intermediate' | 'advanced';
+  price?: {
+    $gte?: number;
+    $lte?: number;
+  };
+  $text?: {
+    $search: string;
+  };
+  [key: string]: any; // For any additional properties
+}
 import { IUser } from '../types/user.types';
 
 // Extend the Express Request type to include user
@@ -11,17 +26,172 @@ interface IAuthenticatedRequest extends Request {
 
 /**
  * @swagger
- * tags:
- *   name: Courses
- *   description: Gestión de cursos
- */
-
-/**
+ * components:
+ *   schemas:
+ *     Course:
+ *       type: object
+ *       required:
+ *         - title
+ *         - description
+ *         - price
+ *         - instructor
+ *         - category
+ *         - level
+ *       properties:
+ *         _id:
+ *           type: string
+ *           description: The auto-generated ID of the course
+ *         title:
+ *           type: string
+ *           description: The course title
+ *         subtitle:
+ *           type: string
+ *           description: A short subtitle for the course
+ *         description:
+ *           type: string
+ *           description: Detailed course description
+ *         price:
+ *           type: number
+ *           minimum: 0
+ *           description: Course price in USD
+ *         instructor:
+ *           type: string
+ *           description: Reference to the User model (instructor)
+ *         category:
+ *           type: string
+ *           description: Reference to the Category model
+ *         level:
+ *           type: string
+ *           enum: [beginner, intermediate, advanced]
+ *           description: Course difficulty level
+ *         duration:
+ *           type: number
+ *           description: Course duration in hours
+ *         thumbnail:
+ *           type: string
+ *           format: uri
+ *           description: URL to the course thumbnail image
+ *         isPublished:
+ *           type: boolean
+ *           default: false
+ *           description: Whether the course is published
+ *         isFeatured:
+ *           type: boolean
+ *           default: false
+ *           description: Whether the course is featured
+ *         ratingAverage:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 5
+ *           default: 0
+ *           description: Average rating from reviews
+ *         ratingCount:
+ *           type: number
+ *           default: 0
+ *           description: Number of ratings
+ *         studentsCount:
+ *           type: number
+ *           default: 0
+ *           description: Number of enrolled students
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ * 
+ *     CreateCourseInput:
+ *       type: object
+ *       required:
+ *         - title
+ *         - description
+ *         - price
+ *         - category
+ *         - level
+ *       properties:
+ *         title:
+ *           type: string
+ *           minLength: 10
+ *           maxLength: 100
+ *         subtitle:
+ *           type: string
+ *           maxLength: 200
+ *         description:
+ *           type: string
+ *           minLength: 20
+ *         price:
+ *           type: number
+ *           minimum: 0
+ *         category:
+ *           type: string
+ *         level:
+ *           type: string
+ *           enum: [beginner, intermediate, advanced]
+ *         duration:
+ *           type: number
+ *           minimum: 0
+ *         thumbnail:
+ *           type: string
+ *           format: uri
+ *         isPublished:
+ *           type: boolean
+ *         isFeatured:
+ *           type: boolean
+ * 
+ *     UpdateCourseInput:
+ *       type: object
+ *       properties:
+ *         title:
+ *           type: string
+ *           minLength: 10
+ *           maxLength: 100
+ *         subtitle:
+ *           type: string
+ *           maxLength: 200
+ *         description:
+ *           type: string
+ *           minLength: 20
+ *         price:
+ *           type: number
+ *           minimum: 0
+ *         category:
+ *           type: string
+ *         level:
+ *           type: string
+ *           enum: [beginner, intermediate, advanced]
+ *         duration:
+ *           type: number
+ *           minimum: 0
+ *         thumbnail:
+ *           type: string
+ *           format: uri
+ *         isPublished:
+ *           type: boolean
+ *         isFeatured:
+ *           type: boolean
+ * 
+ *     Pagination:
+ *       type: object
+ *       properties:
+ *         next:
+ *           type: object
+ *           properties:
+ *             page:
+ *               type: number
+ *             limit:
+ *               type: number
+ *         prev:
+ *           type: object
+ *           properties:
+ *             page:
+ *               type: number
+ *             limit:
+ *               type: number
+ * 
  * @swagger
  * tags:
  *   name: Courses
- *   description: Gestión de cursos
- */
+ *   description: Course management endpoints
 
 /**
  * @swagger
@@ -121,7 +291,7 @@ type QueryParams = {
 export const getCourses = async (req: Request, res: Response, next: NextFunction) => {
   try {
     // 1) Filtrado básico
-    const queryObj: any = { isPublished: true };
+    const queryObj: CourseQuery = { isPublished: true };
     const queryParams = req.query as unknown as QueryParams;
 
     // 2) Filtrado por categoría
@@ -131,7 +301,7 @@ export const getCourses = async (req: Request, res: Response, next: NextFunction
 
     // 3) Filtrado por nivel
     if (queryParams.level) {
-      queryObj.level = queryParams.level;
+      queryObj.level = queryParams.level as 'beginner' | 'intermediate' | 'advanced';
     }
 
     // 4) Filtrado por rango de precios
@@ -151,17 +321,19 @@ export const getCourses = async (req: Request, res: Response, next: NextFunction
     }
 
     // 6) Ordenamiento
-    let sortBy = '-createdAt';
+    type SortField = 'price' | 'rating.average' | 'studentsEnrolled' | 'createdAt' | '-price' | '-rating.average' | '-studentsEnrolled' | '-createdAt';
+    let sortBy: string | Record<string, 1 | -1> = { createdAt: -1 }; // Default sort
+    
     if (queryParams.sort) {
-      const sortMap: Record<string, string> = {
-        'price': 'price',
-        '-price': '-price',
-        'rating': 'rating.average',
-        '-rating': '-rating.average',
-        'students': 'studentsEnrolled',
-        '-students': '-studentsEnrolled',
-        'date': 'createdAt',
-        '-date': '-createdAt'
+      const sortMap: Record<string, Record<string, 1 | -1>> = {
+        'price': { price: 1 },
+        '-price': { price: -1 },
+        'rating': { 'rating.average': 1 },
+        '-rating': { 'rating.average': -1 },
+        'students': { studentsEnrolled: 1 },
+        '-students': { studentsEnrolled: -1 },
+        'date': { createdAt: 1 },
+        '-date': { createdAt: -1 }
       };
       sortBy = sortMap[queryParams.sort] || sortBy;
     }
@@ -172,14 +344,15 @@ export const getCourses = async (req: Request, res: Response, next: NextFunction
     const skip = (page - 1) * limit;
 
     // 8) Ejecutar consulta
-    const findQuery = Course.find(queryObj)
+    // Usamos una aserción de tipo más específica para queryObj
+    const findQuery = Course.find(queryObj as Record<string, unknown>)
       .sort(sortBy)
       .skip(skip)
       .limit(limit)
       .populate('instructor', 'name email avatar')
       .populate('category', 'name');
 
-    const countQuery = Course.countDocuments(queryObj);
+    const countQuery = Course.countDocuments(queryObj as Record<string, unknown>);
 
     const [courses, total] = await Promise.all([findQuery, countQuery]);
 
@@ -452,10 +625,149 @@ export const deleteCourse = async (req: IAuthenticatedRequest, res: Response, ne
   }
 };
 
+/**
+ * @swagger
+ * /api/v1/categories/{categoryId}/courses:
+ *   get:
+ *     summary: Obtener cursos por categoría
+ *     tags: [Courses]
+ *     parameters:
+ *       - in: path
+ *         name: categoryId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID de la categoría
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Número de cursos por página
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           enum: [price, -price, rating, -rating, students, -students, date, -date]
+ *           default: -createdAt
+ *         description: Campo por el que ordenar
+ *     responses:
+ *       200:
+ *         description: Lista de cursos de la categoría
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: integer
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     next:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: number
+ *                         limit:
+ *                           type: number
+ *                     prev:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: number
+ *                         limit:
+ *                           type: number
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Course'
+ *       404:
+ *         description: Categoría no encontrada
+ */
+export const getCoursesByCategory = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { categoryId } = req.params;
+    const page = parseInt((req.query.page as string) || '1', 10);
+    const limit = parseInt((req.query.limit as string) || '10', 10);
+    const skip = (page - 1) * limit;
+    
+    // Definir el tipo de ordenamiento
+    const sortMap: Record<string, Record<string, 1 | -1>> = {
+      'price': { price: 1 },
+      '-price': { price: -1 },
+      'rating': { 'rating.average': 1 },
+      '-rating': { 'rating.average': -1 },
+      'students': { studentsEnrolled: 1 },
+      '-students': { studentsEnrolled: -1 },
+      'date': { createdAt: 1 },
+      '-date': { createdAt: -1 },
+      '-createdAt': { createdAt: -1 }
+    };
+    
+    const sortQuery = sortMap[(req.query.sort as string) || '-createdAt'] || { createdAt: -1 };
+
+    // Verificar si la categoría existe
+    const category = await Category.findById(categoryId).exec();
+    if (!category) {
+      const error = new ApiError(404, 'Categoría no encontrada');
+      return next(error);
+    }
+
+    // Construir el objeto de consulta
+    const query: any = { category: categoryId, isPublished: true };
+
+    // Obtener cursos con paginación
+    const [courses, total] = await Promise.all([
+      Course.find(query)
+        .sort(sortQuery)
+        .skip(skip)
+        .limit(limit)
+        .populate('instructor', 'name')
+        .populate('category', 'name')
+        .lean(),
+      Course.countDocuments(query)
+    ]);
+
+    // Construir objeto de paginación
+    const pagination: any = {};
+    if (skip + courses.length < total) {
+      pagination.next = {
+        page: page + 1,
+        limit
+      };
+    }
+    if (skip > 0) {
+      pagination.prev = {
+        page: page - 1,
+        limit
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      count: courses.length,
+      pagination,
+      data: courses
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
 export default {
   getCourses,
   getCourse,
   createCourse,
   updateCourse,
-  deleteCourse
+  deleteCourse,
+  getCoursesByCategory
 };

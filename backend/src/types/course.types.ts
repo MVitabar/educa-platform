@@ -1,5 +1,6 @@
 import { Document, Model, Types } from 'mongoose';
 import { IUser } from './user.types';
+import { ICategory } from './category.types';
 
 export type CourseLevel = 'beginner' | 'intermediate' | 'advanced';
 
@@ -29,13 +30,12 @@ export interface ICourse extends Document {
   subtitle?: string;
   description: string;
   instructor: Types.ObjectId | IUser;
-  slug: string;
   
   // Course Details
   price: number;
   duration: number; // in hours
   level: CourseLevel;
-  category: string;
+  category: Types.ObjectId | ICategory;
   image?: string;
   
   // Status & Metadata

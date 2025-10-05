@@ -8,11 +8,11 @@ import coursesRouter from './courses.routes';
 import lessonsRouter from './lessons.routes';
 import sectionsRouter from './sections.routes';
 import progressRouter from './progress.routes';
-// Import new route handlers (to be created)
 import enrollmentsRouter from './enrollments.routes';
 import categoriesRouter from './categories.routes';
 import reviewsRouter from './reviews.routes';
 import resourcesRouter from './resources.routes';
+import dashboardRouter from './dashboard.routes';
 
 const router = Router();
 
@@ -46,6 +46,10 @@ console.log('Auth routes mounted at /auth');
 
 router.use('/users', usersRouter);
 console.log('Users routes mounted at /users');
+
+// Dashboard routes
+router.use('/dashboard', dashboardRouter);
+console.log('Dashboard routes mounted at /dashboard');
 
 // Course-related routes
 router.use('/courses', coursesRouter);

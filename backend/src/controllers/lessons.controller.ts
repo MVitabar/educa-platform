@@ -479,8 +479,14 @@ export const updateLesson = async (req: IAuthenticatedRequest, res: Response, ne
  */
 export const deleteLesson = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const lesson = await Lesson.findById(req.params.id);
-    
+    const { id } = req.params;
+
+    if (!Types.ObjectId.isValid(id)) {
+      return next(new ApiError(400, 'ID de lección inválido'));
+    }
+
+    const lesson = await Lesson.findByIdAndDelete(id);
+
     if (!lesson) {
       return next(new ApiError(404, 'Lección no encontrada'));
     }
@@ -490,23 +496,158 @@ export const deleteLesson = async (req: IAuthenticatedRequest, res: Response, ne
       return next(new ApiError(403, 'No tienes permiso para eliminar esta lección'));
     }
 
-    await lesson.deleteOne();
-    
     res.status(200).json({
       success: true,
       data: {}
     });
-  } catch (error: any) {
-    if (error.name === 'CastError') {
-      return next(new ApiError(400, 'ID de lección inválido'));
-    }
-    next(new ApiError(500, `Error al eliminar la lección: ${error.message}`));
+  } catch (error) {
+    next(error);
   }
 };
 
+/**
+ * @swagger
+ * /api/v1/lessons:
+ *   get:
+ *     summary: Obtener todas las lecciones con filtros
+ *     tags: [Lessons]
+ *     parameters:
+ *       - in: query
+ *         name: page
+ *         schema:
+ *           type: integer
+ *           default: 1
+ *         description: Número de página
+ *       - in: query
+ *         name: limit
+ *         schema:
+ *           type: integer
+ *           default: 10
+ *         description: Número de elementos por página
+ *       - in: query
+ *         name: course
+ *         schema:
+ *           type: string
+ *         description: Filtrar por ID de curso
+ *       - in: query
+ *         name: section
+ *         schema:
+ *           type: string
+ *         description: Filtrar por ID de sección
+ *       - in: query
+ *         name: search
+ *         schema:
+ *           type: string
+ *         description: Buscar por título o descripción
+ *       - in: query
+ *         name: sort
+ *         schema:
+ *           type: string
+ *           default: createdAt
+ *           enum: [createdAt, -createdAt, title, -title]
+ *         description: Campo por el que ordenar (prefijar con - para orden descendente)
+ *     responses:
+ *       200:
+ *         description: Lista de lecciones
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                 count:
+ *                   type: integer
+ *                 pagination:
+ *                   type: object
+ *                   properties:
+ *                     next:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: number
+ *                         limit:
+ *                           type: number
+ *                     prev:
+ *                       type: object
+ *                       properties:
+ *                         page:
+ *                           type: number
+ *                         limit:
+ *                           type: number
+ *                 data:
+ *                   type: array
+ *                   items:
+ *                     $ref: '#/components/schemas/Lesson'
+ */
+
+// Define all controller functions before exporting them
+export const getLessons = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const page = parseInt((req.query.page as string) || '1', 10);
+    const limit = parseInt((req.query.limit as string) || '10', 10);
+    const skip = (page - 1) * limit;
+
+    const query: any = {};
+    
+    if (req.query.course) {
+      query.course = req.query.course;
+    }
+    
+    if (req.query.section) {
+      query.section = req.query.section;
+    }
+    
+    if (req.query.search) {
+      query.$or = [
+        { title: { $regex: req.query.search as string, $options: 'i' } },
+        { description: { $regex: req.query.search as string, $options: 'i' } }
+      ];
+    }
+
+    const sort = (req.query.sort as string) || 'createdAt';
+
+    const [lessons, total] = await Promise.all([
+      Lesson.find(query)
+        .sort(sort)
+        .skip(skip)
+        .limit(limit)
+        .populate('course', 'title')
+        .populate('section', 'title')
+        .lean(),
+      Lesson.countDocuments(query)
+    ]);
+
+    const pagination: Record<string, any> = {};
+    if (skip + lessons.length < total) {
+      pagination.next = {
+        page: page + 1,
+        limit
+      };
+    }
+    if (skip > 0) {
+      pagination.prev = {
+        page: page - 1,
+        limit
+      };
+    }
+
+    res.status(200).json({
+      success: true,
+      count: lessons.length,
+      pagination,
+      data: lessons
+    });
+  } catch (error) {
+    next(error);
+  }
+};
+
+// Export all controller functions
 export default {
   createLesson,
   getLesson,
+  getLessons,
   getLessonsByCourse,
   getLessonsBySection,
   updateLesson,
