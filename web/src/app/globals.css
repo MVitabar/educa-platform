@@ -1,10 +1,11 @@
 @import "tailwindcss";
 
+
 :root {
   /* Colores base */
   --color-background: #ffffff;
   --color-foreground: #171717;
-  
+
   /* Primary - Azul principal */
   --color-primary-50: #f0f5ff;
   --color-primary-100: #e0eaff;
@@ -16,7 +17,7 @@
   --color-primary-700: #4338ca;
   --color-primary-800: #3730a3;
   --color-primary-900: #312e81;
-  
+
   /* Secondary - Azul secundario */
   --color-secondary-50: #f0f9ff;
   --color-secondary-100: #e0f2fe;
@@ -28,7 +29,7 @@
   --color-secondary-700: #0369a1;
   --color-secondary-800: #075985;
   --color-secondary-900: #0c4a6e;
-  
+
   /* Accent - Púrpura */
   --color-accent-50: #f5f3ff;
   --color-accent-100: #ede9fe;
@@ -40,7 +41,7 @@
   --color-accent-700: #6d28d9;
   --color-accent-800: #5b21b6;
   --color-accent-900: #4c1d95;
-  
+
   /* Neutral - Escala de grises */
   --color-neutral-50: #f8fafc;
   --color-neutral-100: #f1f5f9;
@@ -52,7 +53,7 @@
   --color-neutral-700: #334155;
   --color-neutral-800: #1e293b;
   --color-neutral-900: #0f172a;
-  
+
   /* Error - Rojo */
   --color-error-50: #fef2f2;
   --color-error-100: #fee2e2;
@@ -64,20 +65,21 @@
   --color-error-700: #b91c1c;
   --color-error-800: #991b1b;
   --color-error-900: #7f1d1d;
-  
-  /* Tus colores personalizados */
+
+  /* Colores personalizados */
   --color-custom-1: #622824;
   --color-custom-2: #2f0618;
   --color-custom-3: #412a9c;
   --color-custom-4: #1b66ff;
   --color-custom-5: #00cef5;
-  
+
   /* Configuración de fuentes */
   --font-sans: 'Inter', system-ui, -apple-system, sans-serif;
   --font-mono: 'Roboto Mono', monospace;
+  --radius: 0.625rem;
 }
 
-/* Configuración de modo oscuro */
+/* Dark mode */
 @media (prefers-color-scheme: dark) {
   :root {
     --color-background: #0a0a0a;
@@ -85,40 +87,41 @@
   }
 }
 
-/* Estilos base */
-body {
-  background-color: var(--color-background);
-  color: var(--color-foreground);
+/* Base styles */
+html {
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Utilidades personalizadas */
+body {
+  background-color: var(--color-background);
+  color: var(--color-foreground);
+  line-height: 1.5;
+}
+
+/* Utility classes */
 @layer utilities {
-  .text-balance {
-    text-wrap: balance;
-  }
-  
-  /* Clases para tus colores personalizados */
+  /* Custom color utilities */
   .bg-custom-1 { background-color: var(--color-custom-1); }
   .text-custom-1 { color: var(--color-custom-1); }
   .border-custom-1 { border-color: var(--color-custom-1); }
-  
+
   .bg-custom-2 { background-color: var(--color-custom-2); }
   .text-custom-2 { color: var(--color-custom-2); }
   .border-custom-2 { border-color: var(--color-custom-2); }
-  
+
   .bg-custom-3 { background-color: var(--color-custom-3); }
   .text-custom-3 { color: var(--color-custom-3); }
   .border-custom-3 { border-color: var(--color-custom-3); }
-  
+
   .bg-custom-4 { background-color: var(--color-custom-4); }
   .text-custom-4 { color: var(--color-custom-4); }
   .border-custom-4 { border-color: var(--color-custom-4); }
-  
+
   .bg-custom-5 { background-color: var(--color-custom-5); }
   .text-custom-5 { color: var(--color-custom-5); }
+  .border-custom-5 { border-color: var(--color-custom-5); }
   .border-custom-5 { border-color: var(--color-custom-5); }
 }
 

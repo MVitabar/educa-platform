@@ -216,7 +216,7 @@ export default function Sidebar() {
     },
     { 
       name: 'Mis Cursos', 
-      href: `/${userRole}/my-courses`, 
+      href: `/${userRole}/courses`, 
       icon: BookOpen,
       roles: ['instructor'] 
     },
