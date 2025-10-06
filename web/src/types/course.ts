@@ -1,99 +1,120 @@
 // Niveles de curso
-
 export type CourseLevel = 'beginner' | 'intermediate' | 'advanced';
+
+// Interfaz para la imagen de Cloudinary
+export interface CloudinaryImage {
+  url: string;
+  public_id: string;
+  format: string;
+  resource_type: 'image' | 'video' | 'raw';
+  width?: number;
+  height?: number;
+  bytes: number;
+}
 
 // Interfaz base del curso
 export interface CourseBase {
-  _id?: string;
+  _id: string;
   title: string;
   description: string;
   category: string;
   price: number;
   level: CourseLevel;
-  isFree: boolean;
+  image: string | CloudinaryImage;
   requirements: string[];
   learningOutcomes: string[];
-  isPublished?: boolean;
-  createdAt?: string;
-  updatedAt?: string;
-}
-
-// Interfaz para la creación/actualización de cursos
-export interface CourseFormData extends Omit<CourseBase, '_id' | 'createdAt' | 'updatedAt'> {
-  image?: File | string;
-  imageUrl?: string; // Para previsualización
+  isPublished: boolean;
+  isFree: boolean;
+  isFeatured?: boolean;
+  tags: string[];
+  slug: string;
+  createdAt: string | { $date: string };
+  updatedAt: string | { $date: string };
+  __v?: number;
 }
 
 // Interfaz para la respuesta de la API
-export interface CourseResponse extends Omit<CourseBase, 'image'> {
-  _id: string;
-  imageUrl: string;
+export interface CourseResponse extends CourseBase {
   instructor: {
     _id: string;
-    name: string;
+    name?: string;
     avatar?: string;
   };
-  students?: number;
-  rating?: number;
-  duration?: string;
-  slug?: string;
-  isEnrolled?: boolean;
+  rating: {
+    average: number;
+    count: number;
+  };
 }
 
-// Tipo para el formulario de curso
-export type CourseFormValues = Omit<CourseFormData, 'imageUrl'> & {
-  image?: File | string;
-};
+// Interfaz para la creación/actualización de cursos
+export interface CourseFormData extends Omit<CourseBase, '_id' | 'createdAt' | 'updatedAt' | 'rating' | '__v'> {
+  imageFile?: File; // Para nuevas imágenes
+  instructor?: string; // ID del instructor
+}
+
+// Función para manejar fechas que pueden venir como string o objeto { $date: string }
+export function parseDateField(date: string | { $date: string } | undefined): string | undefined {
+  if (!date) return undefined;
+  if (typeof date === 'string') return date;
+  return date.$date;
+}
 
 // Datos de ejemplo (solo para desarrollo)
 export const sampleCourses: CourseResponse[] = [
   {
-    _id: '1',
-    title: 'Introducción a la Programación',
-    description: 'Aprende los fundamentos de la programación desde cero con ejemplos prácticos.',
-    imageUrl: '/images/courses/programming.jpg',
+    _id: '68e3e1982b639829dc3daafe',
+    title: 'Curso de Desarrollo Web',
+    description: 'Aprende desarrollo web desde cero con las últimas tecnologías.',
+    image: 'web-development.jpg',
     instructor: {
-      _id: 'instr1',
+      _id: '68e01aa0dc43dcdaf6134959',
       name: 'Juan Pérez',
       avatar: '/images/avatars/instructor1.jpg'
     },
+    category: 'web',
     price: 29.99,
     level: 'beginner',
-    isFree: false,
-    requirements: ['No se requiere experiencia previa', 'Computadora con acceso a internet'],
-    learningOutcomes: ['Fundamentos de programación', 'Lógica de programación', 'Resolución de problemas'],
-    rating: 4.7,
-    students: 1245,
-    duration: '8 horas',
-    slug: 'introduccion-a-la-programacion',
-    category: 'programacion',
     isPublished: true,
+    isFree: false,
+    isFeatured: false,
+    requirements: ['Conocimientos básicos de informática', 'Computadora con acceso a internet'],
+    learningOutcomes: ['HTML5', 'CSS3', 'JavaScript básico', 'Responsive Design'],
+    tags: ['web', 'desarrollo', 'frontend'],
+    slug: 'desarrollo-web',
+    rating: {
+      average: 4.5,
+      count: 10
+    },
     createdAt: '2023-01-15T00:00:00.000Z',
-    updatedAt: '2023-01-15T00:00:00.000Z'
+    updatedAt: '2023-01-15T00:00:00.000Z',
+    __v: 0
   },
   {
-    _id: '2',
-    title: 'Diseño Web Moderno',
-    description: 'Crea sitios web atractivos y responsivos con las últimas tecnologías web.',
-    imageUrl: '/images/courses/web-design.jpg',
+    _id: '68e3e1982b639829dc3dabff',
+    title: 'Curso de React Avanzado',
+    description: 'Domina React con patrones avanzados y mejores prácticas.',
+    image: 'react-advanced.jpg',
     instructor: {
-      _id: 'instr2',
-      name: 'Ana García',
+      _id: '68e01aa0dc43dcdaf6134960',
+      name: 'María González',
       avatar: '/images/avatars/instructor2.jpg'
     },
-    price: 39.99,
-    level: 'intermediate',
-    isFree: false,
-    requirements: ['Conocimientos básicos de HTML y CSS', 'Computadora con editor de código'],
-    learningOutcomes: ['Diseño responsivo', 'Frameworks CSS modernos', 'Buenas prácticas de diseño'],
-    rating: 4.8,
-    students: 987,
-    duration: '12 horas',
-    slug: 'diseno-web-moderno',
-    category: 'diseno-web',
+    category: 'web',
+    price: 49.99,
+    level: 'advanced',
     isPublished: true,
+    isFree: false,
+    isFeatured: true,
+    requirements: ['Conocimientos de JavaScript', 'Experiencia básica con React'],
+    learningOutcomes: ['Patrones avanzados de React', 'Optimización de rendimiento', 'Testing'],
+    tags: ['react', 'frontend', 'javascript'],
+    slug: 'react-avanzado',
+    rating: {
+      average: 4.8,
+      count: 15
+    },
     createdAt: '2023-02-20T00:00:00.000Z',
-    updatedAt: '2023-02-20T00:00:00.000Z'
-  },
-  // Add more sample courses as needed
+    updatedAt: '2023-02-20T00:00:00.000Z',
+    __v: 0
+  }
 ];

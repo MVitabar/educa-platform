@@ -596,16 +596,177 @@ const getStudentRecentLessonsFromDB = async (
 };
 
 const getInstructorStatsFromDB = async (userId: Types.ObjectId): Promise<InstructorDashboardStats> => {
-  // Implementation would go here
-  return mockInstructorStats;
+  try {
+    // Import models inside the function to avoid circular dependencies
+    const Course = (await import('../models/course.model')).default;
+    let Enrollment;
+    
+    try {
+      // Try to import Enrollment model
+      const enrollmentModule = await import('../models/enrollment.model');
+      Enrollment = enrollmentModule?.default || enrollmentModule;
+    } catch (e) {
+      console.warn('Enrollment model not found, using empty stats for enrollments');
+      Enrollment = null;
+    }
+    // Get total courses by this instructor
+    const totalCourses = await Course.countDocuments({ instructor: userId });
+    
+    // Get published courses count
+    const publishedCourses = await Course.countDocuments({ 
+      instructor: userId, 
+      isPublished: true 
+    });
+    
+    let totalStudents = 0;
+    let activeStudents = 0;
+    let recentEnrollments = 0;
+    let completedEnrollments = 0;
+    
+    if (Enrollment) {
+      // Get total students across all courses
+      const enrollments = await Enrollment.find({
+        'course.instructor': userId,
+        status: 'active'
+      }).distinct('student');
+      
+      totalStudents = [...new Set(enrollments)].length;
+      
+      // Get active students (students with activity in the last 30 days)
+      const thirtyDaysAgo = new Date();
+      thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+      
+      const activeEnrollments = await Enrollment.find({
+        'course.instructor': userId,
+        status: 'active',
+        lastAccessed: { $gte: thirtyDaysAgo }
+      }).distinct('student');
+      
+      activeStudents = [...new Set(activeEnrollments)].length;
+      
+      // Get recent enrollments (last 30 days)
+      recentEnrollments = await Enrollment.countDocuments({
+        'course.instructor': userId,
+        enrolledAt: { $gte: thirtyDaysAgo }
+      });
+      
+      // Calculate completion rate (students who completed any course)
+      completedEnrollments = await Enrollment.countDocuments({
+        'course.instructor': userId,
+        status: 'completed'
+      });
+    }
+    
+    // Calculate completion rate
+    const completionRate = totalStudents > 0 
+      ? Math.round((completedEnrollments / totalStudents) * 100) 
+      : 0;
+      
+    // Calculate total revenue (if you have payment/transaction data)
+    // This is a placeholder - you'll need to implement based on your payment system
+    const totalRevenue = 0; // Replace with actual query to sum payments
+    
+    // Get average rating (from course reviews)
+    const coursesWithRatings = await Course.aggregate([
+      { $match: { instructor: userId, 'rating.count': { $gt: 0 } } },
+      { 
+        $group: {
+          _id: null,
+          averageRating: { $avg: '$rating.average' },
+          totalRatings: { $sum: '$rating.count' }
+        }
+      }
+    ]);
+    
+    const averageRating = coursesWithRatings[0]?.averageRating || 0;
+    const totalRatings = coursesWithRatings[0]?.totalRatings || 0;
+    
+    return {
+      totalStudents,
+      activeStudents,
+      totalCourses,
+      publishedCourses,
+      totalRevenue,
+      recentEnrollments,
+      completionRate,
+      averageRating: parseFloat(averageRating.toFixed(1)),
+      totalRatings
+    };
+  } catch (error) {
+    console.error('Error fetching instructor stats:', error);
+    // Return default values in case of error
+    return {
+      totalStudents: 0,
+      activeStudents: 0,
+      totalCourses: 0,
+      publishedCourses: 0,
+      totalRevenue: 0,
+      recentEnrollments: 0,
+      completionRate: 0,
+      averageRating: 0,
+      totalRatings: 0
+    };
+  }
 };
 
 const getInstructorCoursesFromDB = async (
   userId: Types.ObjectId, 
   options: { status: string; sort: string; limit: number }
 ): Promise<InstructorCourse[]> => {
-  // Implementation would go here
-  return [];
+  const { status = 'all', sort = 'recent', limit = 10 } = options;
+  
+  // Build the query - using 'instructor' to match the Course model
+  const query: any = { instructor: userId };
+  
+  // Apply status filter
+  if (status === 'published') {
+    query.isPublished = true;
+  } else if (status === 'draft') {
+    query.isPublished = false;
+  } else if (status === 'archived') {
+    // Assuming there's an isArchived field in the Course model
+    query.isArchived = true;
+  }
+  
+  // Define sort options
+  let sortOption = {};
+  switch (sort) {
+    case 'title':
+      sortOption = { title: 1 }; // A-Z
+      break;
+    case 'students':
+      sortOption = { students: -1 }; // Most students first
+      break;
+    case 'revenue':
+      // Assuming there's a revenue field or it's calculated
+      sortOption = { revenue: -1 }; // Highest revenue first
+      break;
+    case 'recent':
+    default:
+      sortOption = { createdAt: -1 }; // Newest first
+      break;
+  }
+  
+  // Execute query
+  const Course = require('../models/course.model').default;
+  const courses = await Course.find(query)
+    .sort(sortOption)
+    .limit(limit)
+    .lean();
+    
+  return courses.map(course => ({
+    id: course._id.toString(),
+    title: course.title,
+    description: course.description,
+    image: course.image,
+    price: course.price,
+    isPublished: course.isPublished,
+    students: course.students?.length || 0,
+    rating: course.rating?.average || 0,
+    reviews: course.rating?.count || 0,
+    createdAt: course.createdAt,
+    updatedAt: course.updatedAt
+  }));
 };
 
 const getInstructorReviewsFromDB = async (
@@ -913,21 +1074,65 @@ export const getInstructorStudents = async (req: Request, res: Response, next: N
       return res.status(401).json({ status: 'error', message: 'No autorizado' });
     }
     
-    // Mock data for instructor's students
-    const students = [
+    const Enrollment = require('../models/enrollment.model')?.default;
+    const User = require('../models/user.model')?.default;
+    
+    // Obtener todos los estudiantes únicos que están inscritos en los cursos del instructor
+    const enrollments = await Enrollment.aggregate([
+      // Filtrar por cursos del instructor
       {
-        id: '1',
-        name: 'Estudiante Ejemplo',
-        email: 'estudiante@example.com',
-        coursesEnrolled: 3,
-        lastActive: new Date().toISOString()
-      }
-    ];
+        $lookup: {
+          from: 'courses',
+          localField: 'course',
+          foreignField: '_id',
+          as: 'courseInfo'
+        }
+      },
+      { $unwind: '$courseInfo' },
+      { 
+        $match: { 
+          'courseInfo.instructor': new Types.ObjectId(req.user._id) 
+        } 
+      },
+      // Agrupar por estudiante
+      {
+        $group: {
+          _id: '$student',
+          lastActive: { $max: '$lastAccessed' },
+          coursesEnrolled: { $sum: 1 },
+          enrollments: { $push: '$$ROOT' }
+        }
+      },
+      // Ordenar por último acceso (más reciente primero)
+      { $sort: { lastActive: -1 } },
+      // Limitar resultados (opcional)
+      { $limit: 50 }
+    ]);
+    
+    // Obtener detalles de los usuarios
+    const studentIds = enrollments.map(e => e._id);
+    const users = await User.find(
+      { _id: { $in: studentIds } },
+      'name email avatar'
+    ).lean();
+    
+    // Combinar datos de usuarios con datos de inscripción
+    const students = enrollments.map(enrollment => {
+      const user = users.find(u => u._id.toString() === enrollment._id.toString());
+      return {
+        id: enrollment._id,
+        name: user?.name || 'Usuario desconocido',
+        email: user?.email || '',
+        avatar: user?.avatar,
+        coursesEnrolled: enrollment.coursesEnrolled,
+        lastActive: enrollment.lastActive || new Date(0).toISOString()
+      };
+    });
     
     res.status(200).json({
       status: 'success',
       results: students.length,
-      data: { students }
+      data: students
     });
   } catch (error) {
     next(error);

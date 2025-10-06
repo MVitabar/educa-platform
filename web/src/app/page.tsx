@@ -5,24 +5,106 @@ import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { MagnifyingGlassIcon, FunnelIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import CourseCard from '@/components/course/CourseCard';
-import { sampleCourses } from '@/types/course';
+import { apiClient } from '@/lib/api/apiClient';
+import { CourseResponse } from '@/types/course';
+import { CloudinaryImage } from '@/types/course';
 
 export default function Home() {
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [levelFilter, setLevelFilter] = useState<string>('all');
   const [isClient, setIsClient] = useState(false);
+  const [courses, setCourses] = useState<CourseResponse[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Helper function to get category name from different possible input types
+  const getCategoryName = (category: unknown): string => {
+    if (typeof category === 'string') return category;
+    if (category && typeof category === 'object' && 'name' in category) {
+      return (category as { name: string }).name;
+    }
+    return 'Sin categoría';
+  };
+
+  // Fetch courses from API
+  useEffect(() => {
+    const fetchCourses = async () => {
+      try {
+        setIsLoading(true);
+        const response = await apiClient.get<CourseResponse[]>('/courses', {
+          params: {
+            status: 'published',
+            limit: 100,
+            sort: '-createdAt'
+          }
+        });
+        
+        if (Array.isArray(response)) {
+          // Transform the response to ensure it matches CourseResponse
+          const transformedCourses = response.map(course => {
+            // Handle image - ensure it's either a string or CloudinaryImage
+            let image: string | CloudinaryImage;
+            if (typeof course.image === 'string') {
+              image = course.image;
+            } else if (course.image && typeof course.image === 'object' && 'url' in course.image) {
+              image = course.image as CloudinaryImage;
+            } else {
+              image = ''; // Fallback to empty string if invalid
+            }
+
+            // Get category name using the helper function
+            const category = getCategoryName(course.category);
+
+            // Ensure instructor has required fields
+            const instructor = {
+              _id: course.instructor?._id || '',
+              name: typeof course.instructor === 'string' 
+                ? course.instructor 
+                : course.instructor?.name || 'Instructor',
+              avatar: typeof course.instructor === 'string' 
+                ? '' 
+                : course.instructor?.avatar || ''
+            };
+
+            // Ensure rating exists
+            const rating = {
+              average: course.rating?.average || 0,
+              count: course.rating?.count || 0
+            };
+
+            return {
+              ...course,
+              image,
+              category,
+              instructor,
+              rating
+            } as CourseResponse;
+          });
+          
+          setCourses(transformedCourses);
+        }
+      } catch (err) {
+        console.error('Error fetching courses:', err);
+        setError('Error al cargar los cursos. Por favor, intenta de nuevo más tarde.');
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchCourses();
+  }, []);
+
   // Get all unique categories from courses
   const allCategories = Array.from(
-    new Set(sampleCourses.flatMap(course => course.category))
-  );
+    new Set(courses.map(course => course.category).filter(Boolean))
+  ) as string[];
 
   // Get all unique levels from courses
   const allLevels = Array.from(
-    new Set(sampleCourses.map(course => course.level))
+    new Set(courses.map(course => course.level))
   );
 
   // Check if user is authenticated (client-side only)
@@ -42,15 +124,23 @@ export default function Home() {
   }, [searchParams]);
 
   // Filter courses based on search and filters
-  const filteredCourses = sampleCourses.filter(course => {
+  const filteredCourses = courses.filter(course => {
     const matchesSearch = course.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
       course.description.toLowerCase().includes(searchTerm.toLowerCase());
     
+    // Safely get category name
+    let categoryName = '';
+    if (typeof course.category === 'string') {
+      categoryName = course.category;
+    } else if (course.category && typeof course.category === 'object' && 'name' in course.category) {
+      categoryName = (course.category as { name: string }).name;
+    }
+    
     const matchesCategory = categoryFilter === 'all' || 
-      course.category.includes(categoryFilter);
+      categoryName.toLowerCase() === categoryFilter.toLowerCase();
     
     const matchesLevel = levelFilter === 'all' || 
-      course.level === levelFilter;
+      course.level.toLowerCase() === levelFilter.toLowerCase();
 
     return matchesSearch && matchesCategory && matchesLevel;
   });
@@ -169,13 +259,60 @@ export default function Home() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
         {filteredCourses.length > 0 ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
-            {filteredCourses.map((course) => (
-              <CourseCard 
-                key={course._id} 
-                course={course} 
-                isAuthenticated={isAuthenticated}
-              />
-            ))}
+            {isLoading ? (
+              // Loading skeleton
+              Array(4).fill(0).map((_, index) => (
+                <div key={index} className="animate-pulse bg-white dark:bg-neutral-800 rounded-xl shadow-md overflow-hidden border border-neutral-200 dark:border-neutral-700">
+                  <div className="h-48 bg-neutral-200 dark:bg-neutral-700"></div>
+                  <div className="p-4">
+                    <div className="h-6 bg-neutral-200 dark:bg-neutral-700 rounded w-3/4 mb-2"></div>
+                    <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-1/2 mb-4"></div>
+                    <div className="flex justify-between items-center">
+                      <div className="h-4 bg-neutral-200 dark:bg-neutral-700 rounded w-1/4"></div>
+                      <div className="h-8 bg-neutral-200 dark:bg-neutral-700 rounded w-20"></div>
+                    </div>
+                  </div>
+                </div>
+              ))
+            ) : error ? (
+              <div className="col-span-full text-center py-12">
+                <p className="text-red-500">{error}</p>
+              </div>
+            ) : (
+              filteredCourses.map((course) => {
+                // Create a safe course object that matches CourseResponse
+                const safeCourse: CourseResponse = {
+                  ...course,
+                  // Ensure image is properly handled
+                  image: course.image,
+                  // Ensure category is a string
+category: getCategoryName(course.category),
+                  // Ensure rating exists
+                  rating: {
+                    average: course.rating?.average || 0,
+                    count: course.rating?.count || 0
+                  },
+                  // Ensure instructor has all required fields
+                  instructor: {
+                    _id: course.instructor?._id || '',
+                    name: typeof course.instructor === 'string' 
+                      ? course.instructor 
+                      : course.instructor?.name || 'Instructor',
+                    avatar: typeof course.instructor === 'string' 
+                      ? '' 
+                      : course.instructor?.avatar || ''
+                  }
+                };
+                
+                return (
+                  <CourseCard 
+                    key={course._id} 
+                    course={safeCourse} 
+                    isAuthenticated={isAuthenticated}
+                  />
+                );
+              })
+            )}
           </div>
         ) : (
           <div className="text-center py-12">

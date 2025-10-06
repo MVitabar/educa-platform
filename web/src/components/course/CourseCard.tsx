@@ -7,13 +7,37 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
   return (
     <div className="bg-white dark:bg-neutral-800 rounded-xl shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-300 border border-neutral-200 dark:border-neutral-700">
       <div className="relative h-48 w-full">
-        <Image
-          src={course.imageUrl}
-          alt={course.title}
-          fill
-          className="object-cover"
-          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-        />
+        {course.image ? (
+          typeof course.image === 'string' ? (
+            <Image
+              src={course.image}
+              alt={course.title}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          ) : 'url' in course.image ? (
+            <Image
+              src={course.image.url}
+              alt={course.title}
+              fill
+              className="object-cover"
+              sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-primary-100 to-primary-200 dark:from-neutral-700 dark:to-neutral-800 flex items-center justify-center">
+              <span className="text-4xl font-bold text-primary-600 dark:text-white">
+                {course.title.charAt(0).toUpperCase()}
+              </span>
+            </div>
+          )
+        ) : (
+          <div className="w-full h-full bg-gradient-to-br from-primary-100 to-primary-200 dark:from-neutral-700 dark:to-neutral-800 flex items-center justify-center">
+            <span className="text-4xl font-bold text-primary-600 dark:text-white">
+              {course.title.charAt(0).toUpperCase()}
+            </span>
+          </div>
+        )}
         <div className="absolute top-3 right-3 bg-primary-600 text-white text-xs font-semibold px-3 py-1.5 rounded-full shadow-md">
           {course.level}
         </div>
@@ -21,17 +45,17 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
       
       <div className="p-5">
         <div className="flex items-center mb-3">
-          <div className="flex" aria-label={`Calificación: ${course.rating || 0} de 5 estrellas`}>
+          <div className="flex" aria-label={`Calificación: ${course.rating?.average || 0} de 5 estrellas`}>
             {[...Array(5)].map((_, i) => (
               <StarIcon 
                 key={i} 
-                className={`h-5 w-5 ${i < Math.floor(course.rating || 0) ? 'text-yellow-500' : 'text-neutral-300 dark:text-neutral-600'}`} 
+                className={`h-5 w-5 ${i < Math.floor(course.rating?.average || 0) ? 'text-yellow-500' : 'text-neutral-300 dark:text-neutral-600'}`} 
                 aria-hidden="true"
               />
             ))}
           </div>
           <span className="ml-2 text-sm text-neutral-700 dark:text-neutral-300">
-            {course.rating ? course.rating.toFixed(1) : 'Nuevo'} <span className="text-neutral-500 dark:text-neutral-400">({course.students || 0} estudiantes)</span>
+            {course.rating ? course.rating.average.toFixed(1) : 'Nuevo'} <span className="text-neutral-500 dark:text-neutral-400">({course.rating.count} estudiantes)</span>
           </span>
         </div>
         
@@ -56,28 +80,19 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
         
         <div className="flex justify-between items-center pt-3 border-t border-neutral-100 dark:border-neutral-700">
           <div>
-            <span className="text-sm text-neutral-500 dark:text-neutral-400">Desde</span>
-            <span className="text-2xl font-bold text-neutral-900 dark:text-white ml-1">
+            <span className="text-sm text-neutral-500 dark:text-neutral-400">Desde </span>
+            <span className="text-2xl font-bold text-neutral-900 dark:text-white">
               {typeof course.price === 'number' ? `$${course.price.toFixed(2)}` : 'Gratis'}
             </span>
           </div>
           
-          {isAuthenticated ? (
-            course.isEnrolled ? (
-              <Link 
-                href={`/courses/${course.slug}`}
-                className="bg-green-600 hover:bg-green-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 text-sm sm:text-base"
-              >
-                Continuar
-              </Link>
-            ) : (
-              <button 
-                className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 text-sm sm:text-base"
-                aria-label={`Inscribirse al curso: ${course.title}`}
-              >
-                Inscribirse
-              </button>
-            )
+{isAuthenticated ? (
+            <button 
+              className="bg-primary-600 hover:bg-primary-700 text-white px-4 py-2.5 rounded-lg font-medium transition-colors focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-offset-2 text-sm sm:text-base"
+              aria-label={`Inscribirse al curso: ${course.title}`}
+            >
+              Inscribirse
+            </button>
           ) : (
             <Link 
               href={`/login?redirect=/courses/${course.slug}`}

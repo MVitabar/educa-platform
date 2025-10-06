@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
-import { Types, SortOrder } from 'mongoose';
+import mongoose, { Types, SortOrder } from 'mongoose';
+import slugify from 'slugify';
 import Course from '../models/course.model';
 import { Category } from '../models/category.model';
+import { ICategory, ICategoryDocument } from '../types/category.types';
 import { ApiError } from '../utils/apiError';
 
 interface CourseQuery {
@@ -463,29 +465,96 @@ export const getCourse = async (req: Request, res: Response, next: NextFunction)
  *         description: Prohibido - Solo instructores pueden crear cursos
  */
 export const createCourse = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
   try {
     // Verificar que el usuario es instructor o admin
     if (!req.user || (req.user.role !== 'instructor' && req.user.role !== 'admin')) {
+      await session.abortTransaction();
       return next(new ApiError(403, 'Solo los instructores pueden crear cursos'));
     }
 
-    const courseData = {
-      ...req.body,
-      instructor: req.user?._id
-    };
+    const { category: categoryName, ...rest } = req.body;
 
-    const course = await Course.create(courseData);
+    if (!categoryName) {
+      throw new ApiError(400, 'El nombre de la categoría es requerido');
+    }
+
+    console.log('Buscando categoría:', categoryName);
+    
+    // Primero intentamos encontrar la categoría por slug (que es único)
+    const slug = slugify(categoryName.trim().toLowerCase(), { strict: true });
+    let categoryDoc = await Category.findOne({ slug }).session(session);
+    
+    console.log('Categoría encontrada por slug:', categoryDoc);
+
+    // Si no la encontramos, intentamos por nombre (case insensitive)
+    if (!categoryDoc) {
+      categoryDoc = await Category.findOne({ 
+        name: { $regex: new RegExp(`^${categoryName}$`, 'i') }
+      }).session(session);
+      console.log('Categoría encontrada por nombre:', categoryDoc);
+    }
+
+    // Si la categoría no existe, crearla
+    if (!categoryDoc) {
+      try {
+        console.log('Creando nueva categoría:', categoryName);
+        
+        // Usamos create directamente con el modelo para aprovechar los hooks
+        const [newCategory] = await Category.create([{
+          name: categoryName.trim(),
+          description: 'Categoría creada automáticamente',
+          isActive: true,
+          featured: false,
+          icon: 'default-icon',
+          createdBy: req.user._id,
+          updatedBy: req.user._id,
+          parent: null,
+          // El slug se generará automáticamente por el pre-save hook
+        }], { session });
+        
+        console.log('Categoría guardada exitosamente:', newCategory);
+        categoryDoc = newCategory;
+      } catch (error: unknown) {
+        console.error('Error al crear la categoría:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Error desconocido al crear la categoría';
+        throw new ApiError(400, `Error al crear la categoría: ${errorMessage}`);
+      }
+    }
+
+    const courseData = {
+      ...rest,
+      // Extraer solo la URL de la imagen si es un objeto
+      image: rest.image?.url || rest.image || 'default-course.jpg',
+      category: categoryDoc.name, // Usamos el nombre de la categoría en lugar del ID
+      instructor: req.user._id,
+      isPublished: req.body.isPublished !== undefined ? req.body.isPublished : true // Aseguramos que isPublished se tome del request
+    };
+    
+    console.log('Datos del curso a guardar (con isPublished):', courseData);
+    
+    console.log('Datos del curso a guardar:', courseData);
+
+    const course = await Course.create([courseData], { session });
+    
+    await session.commitTransaction();
     
     res.status(201).json({
       success: true,
-      data: course
+      data: course[0] // Create devuelve un array
     });
   } catch (error: any) {
+    await session.abortTransaction();
+    
     if (error.name === 'ValidationError') {
       const messages = Object.values(error.errors).map((val: any) => val.message);
       return next(new ApiError(400, messages.join(', ')));
     }
     next(new ApiError(500, `Error al crear el curso: ${error.message}`));
+  } finally {
+    session.endSession();
   }
 };
 

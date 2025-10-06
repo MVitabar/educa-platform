@@ -93,7 +93,8 @@ export interface CourseBase {
   instructor: string | { _id: string; name: string };
   category: string | { _id: string; name: string };
   price: number;
-  imageUrl?: string;
+  image?: string;  // Campo que realmente usa la API
+  imageUrl?: string; // Mantenemos este por compatibilidad
   studentsCount?: number;
   progress?: number;
   nextSession?: string;
@@ -204,7 +205,8 @@ class InstructorService {
       instructor,
       category,
       price: course.price,
-      imageUrl: course.imageUrl || '',
+      // Usar 'image' primero, luego 'imageUrl' como respaldo, y por último una imagen por defecto
+      imageUrl: course.image || course.imageUrl || '/images/course-placeholder.jpg',
       studentsCount: course.studentsCount || 0,
       progress: course.progress || 0,
       nextSession: course.nextSession || '',
@@ -221,12 +223,31 @@ class InstructorService {
   async getRecentCourses(limit: number = 3): Promise<Course[]> {
     try {
       const response = await apiClient.get<CourseBase[]>(
-        '/dashboard/instructor/courses/recent',
-        { params: { limit } }
+        '/courses',
+        { 
+          params: { 
+            limit: 100, // Get more courses to filter client-side
+            sort: '-createdAt',
+            status: 'all',
+            mine: 'true'  // Get only the instructor's courses
+          },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${localStorage.getItem('token')}`
+          }
+        }
       );
-      return Array.isArray(response) 
-        ? response.map((course: CourseBase) => this.transformCourse(course))
-        : [];
+      
+      if (Array.isArray(response)) {
+        // Filter active (published) courses
+        const activeCourses = response.filter(course => course.isPublished);
+        
+        // Take only the requested number of active courses
+        const limitedActiveCourses = activeCourses.slice(0, limit);
+        
+        return limitedActiveCourses.map(course => this.transformCourse(course));
+      }
+      return [];
     } catch (error: unknown) {
       if (error instanceof Error) {
         console.error('Error fetching recent courses:', error.message);
@@ -296,11 +317,11 @@ class InstructorService {
     options: { page?: number; limit?: number } = {}
   ): Promise<{ students: Student[]; total: number }> {
     try {
-      const { page = 1, limit = 10 } = options;
-      return await apiClient.get<{ students: Student[]; total: number }>(
-        `/instructor/courses/${courseId}/students`,
-        { params: { page, limit } }
+      const response = await apiClient.get<{ students: Student[]; total: number }>(
+        `/courses/${courseId}/students`,
+        { params: options }
       );
+      return response || { students: [], total: 0 };
     } catch (error: unknown) {
       if (error instanceof Error) {
         console.error('Error fetching course students:', error.message);
@@ -314,10 +335,10 @@ class InstructorService {
   // Obtener análisis de un curso
   async getCourseAnalytics(courseId: string): Promise<CourseAnalytics> {
     try {
-      return await apiClient.get<CourseAnalytics>(
-        '/instructor/analytics',
-        { params: { courseId } }
-      ) || this.getDefaultAnalytics(courseId);
+      const response = await apiClient.get<CourseAnalytics>(
+        `/instructors/me/courses/${courseId}/analytics`
+      );
+      return response || this.getDefaultAnalytics(courseId);
     } catch (error: unknown) {
       if (error instanceof Error) {
         console.error('Error fetching course analytics:', error.message);

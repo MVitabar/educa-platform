@@ -5,16 +5,31 @@ import mongoose from 'mongoose';
 import swaggerUi from 'swagger-ui-express';
 import YAML from 'yamljs';
 import path from 'path';
+import fileUpload from 'express-fileupload';
 import { swaggerSpec } from './config/swagger';
 import config from './config';
 import { errorHandler } from './middlewares/error.middleware';
 import router from './routes';
+import { v2 as cloudinary } from 'cloudinary';
 
 const app = express();
 
+// Configure Cloudinary
+cloudinary.config({
+  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+  api_key: process.env.CLOUDINARY_API_KEY,
+  api_secret: process.env.CLOUDINARY_API_SECRET
+});
+
 // Middleware
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(fileUpload({
+  useTempFiles: true,
+  tempFileDir: '/tmp/',
+  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  abortOnLimit: true
+}));
 
 // CORS configuration
 app.use(cors({
@@ -36,7 +51,6 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 // API Routes with /api/v1 prefix
 app.use('/api/v1', router);
 
-// Serve API documentation in JSON format
 app.get('/api-docs.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
@@ -49,7 +63,6 @@ app.use((req, res, next) => {
     message: `Cannot ${req.method} ${req.originalUrl}`
   });
 });
-
 // Error handling
 app.use(errorHandler);
 

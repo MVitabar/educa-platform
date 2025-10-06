@@ -40,19 +40,7 @@ const courseSchema = new Schema(
     category: {
       type: String,
       required: [true, 'La categoría es obligatoria'],
-      enum: {
-        values: [
-          'programming',
-          'design',
-          'business',
-          'marketing',
-          'languages',
-          'music',
-          'photography',
-          'other',
-        ],
-        message: 'Categoría no válida',
-      },
+      trim: true
     },
     price: {
       type: Number,
@@ -86,7 +74,7 @@ const courseSchema = new Schema(
     },
     isPublished: {
       type: Boolean,
-      default: false,
+      default: true, // Changed from false to true
     },
     isFeatured: {
       type: Boolean,

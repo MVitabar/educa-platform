@@ -13,6 +13,7 @@ import categoriesRouter from './categories.routes';
 import reviewsRouter from './reviews.routes';
 import resourcesRouter from './resources.routes';
 import dashboardRouter from './dashboard.routes';
+import uploadRouter from './upload.routes';
 
 const router = Router();
 
@@ -47,6 +48,10 @@ console.log('Auth routes mounted at /auth');
 router.use('/users', usersRouter);
 console.log('Users routes mounted at /users');
 
+// Upload routes
+router.use('/upload', uploadRouter);
+console.log('Upload routes mounted at /upload');
+
 // Dashboard routes
 router.use('/dashboard', dashboardRouter);
 console.log('Dashboard routes mounted at /dashboard');
@@ -77,6 +82,10 @@ console.log('Resources routes mounted at /resources');
 // Progress tracking routes
 router.use('/progress', progressRouter);
 console.log('Progress tracking routes mounted at /progress');
+
+// File upload routes
+router.use('/upload', uploadRouter);
+console.log('Upload routes mounted at /upload');
 
 // 404 handler for all routes
 router.use(notFoundHandler);

@@ -4,6 +4,7 @@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
+import { FileUploadSimple } from '@/components/ui/file-upload-simple';
 import {
   Select,
   SelectContent,
@@ -14,30 +15,28 @@ import {
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { SubmitHandler, useForm, Resolver } from 'react-hook-form';
+import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { Loader2, Plus, X } from 'lucide-react';
 import { type CourseLevel, type CourseResponse } from '@/types/course';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { useState } from 'react';
-import { zodResolver } from '@hookform/resolvers/zod';
+import { uploadFile } from '@/services/upload.service';
 
 
 
 // Define the form input type
-type CourseFormInput = {
-  title: string;
-  description: string;
-  category: string;
-  price: number;
-  level: CourseLevel;
-  image?: File;
-  isFree: boolean;
-  requirements: string[];
-  learningOutcomes: string[];
-  isPublished: boolean;
-};
+interface CloudinaryImage {
+  url: string;
+  public_id: string;
+  format: string;
+  resource_type: 'image' | 'video' | 'raw';
+  width?: number;
+  height?: number;
+  bytes: number;
+}
+
 
 // Define the schema with proper types
 const courseSchema = z.object({
@@ -69,11 +68,15 @@ const CourseForm: React.FC<CourseFormProps> = ({
 }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState<string | null>(
-    initialData.imageUrl || null
+    initialData.image 
+      ? typeof initialData.image === 'string' 
+        ? initialData.image 
+        : 'url' in initialData.image 
+          ? (initialData.image as CloudinaryImage).url 
+          : null
+      : null
   );
   const router = useRouter();
-
-  // Form values type is now defined above
 
   const {
     register,
@@ -81,7 +84,7 @@ const CourseForm: React.FC<CourseFormProps> = ({
     formState: { errors },
     setValue,
     getValues,
-  } = useForm<CourseFormInput, object, CourseFormValues>({
+  } = useForm<CourseFormValues>({
     resolver: zodResolver(courseSchema) as unknown as Resolver<CourseFormValues, object>,
     defaultValues: {
       title: initialData.title || '',
@@ -89,65 +92,109 @@ const CourseForm: React.FC<CourseFormProps> = ({
       category: initialData.category || '',
       price: initialData.price || 0,
       level: (initialData.level || 'beginner') as CourseLevel,
-      isFree: initialData.isFree || false,
+      isFree: initialData.isFree !== undefined ? initialData.isFree : false,
       requirements: initialData.requirements || [],
       learningOutcomes: initialData.learningOutcomes || [],
-      isPublished: initialData.isPublished || false,
+      isPublished: initialData.isPublished !== undefined ? initialData.isPublished : true,
       image: undefined
-    }
+    },
+    mode: 'onChange',
+    reValidateMode: 'onChange'
   });
 
-  // Handle image file selection
-  const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  // Handle image file selection and upload to Cloudinary
+  const handleImageChange = async (file: File) => {
     if (!file) return;
     
     // Validate file type
     const validTypes = ['image/jpeg', 'image/png', 'image/webp'];
     if (!validTypes.includes(file.type)) {
-      toast.error('Por favor, sube una imagen en formato JPG, PNG o WebP');
+      toast.error('Formato de archivo no soportado. Por favor, sube una imagen JPG, PNG o WebP.');
       return;
     }
-    
-    // Validate file size (5MB max)
-    const maxSize = 5 * 1024 * 1024;
+
+    // Validate file size (5MB maximum)
+    const maxSize = 5 * 1024 * 1024; // 5MB
     if (file.size > maxSize) {
-      toast.error('La imagen no puede pesar más de 5MB');
+      toast.error(`El archivo es demasiado grande. Tamaño máximo: ${maxSize / 1024 / 1024}MB`);
       return;
     }
-    
-    // Using type assertion for file upload
-    setValue('image', file as unknown as File, { shouldValidate: true });
-    setImagePreview(URL.createObjectURL(file));
+
+    try {
+      setIsLoading(true);
+      // Show preview
+      const previewUrl = URL.createObjectURL(file);
+      setImagePreview(previewUrl);
+
+      // Upload to Cloudinary
+      const response = await uploadFile(file);
+      
+      if (response.success) {
+        // Store the Cloudinary response in the form
+        setValue('image', response.data, { shouldValidate: true });
+        toast.success('Imagen subida correctamente');
+      }
+    } catch (error) {
+      console.error('Error al subir la imagen:', error);
+      toast.error('Error al subir la imagen');
+      setImagePreview(null);
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   // Handle form submission
   const onSubmit: SubmitHandler<CourseFormValues> = async (data: CourseFormValues) => {
     try {
       setIsLoading(true);
-      const formData = new FormData();
       
-      // Handle form data with proper type checking
-      Object.entries(data).forEach(([key, value]) => {
-        if (value === undefined || value === null) return;
-        
-        const stringKey = String(key);
-        
-        if (stringKey === 'image' && value instanceof File) {
-          formData.append('image', value);
-        } else if (Array.isArray(value)) {
-          value.forEach((item, index) => {
-            if (item) {
-              formData.append(`${stringKey}[${index}]`, String(item));
-            }
-          });
-        } else if (typeof value === 'boolean' || typeof value === 'number') {
-          formData.append(stringKey, String(value));
-        } else if (typeof value === 'string') {
-          formData.append(stringKey, value);
-        }
-      });
+      // 1. Preparar los datos del formulario
+      const courseData = {
+        title: data.title?.trim() || '',
+        description: data.description?.trim() || '',
+        category: data.category?.trim() || '',
+        price: data.isFree ? 0 : (Number(data.price) || 0),
+        level: data.level || 'beginner',
+        isFree: Boolean(data.isFree),
+        requirements: Array.isArray(data.requirements) 
+          ? data.requirements.filter(Boolean).map(r => r.trim()) 
+          : [],
+        learningOutcomes: Array.isArray(data.learningOutcomes) 
+          ? data.learningOutcomes.filter(Boolean).map(lo => lo.trim())
+          : [],
+        isPublished: Boolean(data.isPublished),
+        // Add image data if available
+        ...(data.image && typeof data.image === 'object' && {
+          image: {
+            url: data.image.url,
+            public_id: data.image.public_id,
+            format: data.image.format,
+            resource_type: data.image.resource_type,
+            ...(data.image.width && { width: data.image.width }),
+            ...(data.image.height && { height: data.image.height }),
+            bytes: data.image.bytes
+          }
+        })
+      };
 
+      // 2. Validar campos requeridos
+      const errors = [];
+      if (!courseData.title) errors.push('El título es obligatorio');
+      if (!courseData.description) errors.push('La descripción es obligatoria');
+      if (!courseData.category) errors.push('La categoría es obligatoria');
+      
+      if (errors.length > 0) {
+        throw new Error(errors.join('\n'));
+      }
+      if (isNaN(courseData.price)) errors.push('El precio debe ser un número válido');
+      
+      if (errors.length > 0) {
+        throw new Error(errors.join(', '));
+      }
+
+      // 3. Mostrar los datos en la consola para depuración
+      console.log('Datos a enviar:', JSON.stringify(courseData, null, 2));
+      
       const url = isEdit && initialData._id 
         ? `${process.env.NEXT_PUBLIC_API_URL}/courses/${initialData._id}`
         : `${process.env.NEXT_PUBLIC_API_URL}/courses`;
@@ -158,29 +205,69 @@ const CourseForm: React.FC<CourseFormProps> = ({
       if (!token) {
         throw new Error('No se encontró el token de autenticación');
       }
-      
-      const response = await fetch(url, {
+
+      // 7. Preparar los datos para enviar
+      const requestData = {
+        ...courseData,
+        // Asegurarse de que los arrays no sean undefined
+        requirements: courseData.requirements || [],
+        learningOutcomes: courseData.learningOutcomes || []
+      };
+
+      // 8. Configurar las opciones de la petición
+      const options = {
         method,
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
         },
-        body: formData,
+        body: JSON.stringify(requestData)
+      };
+
+      console.log('Enviando datos a:', url);
+      console.log('Datos enviados:', requestData);
+
+      console.log('Enviando petición a:', url);
+      console.log('Opciones de la petición:', {
+        method,
+        headers: { 'Authorization': 'Bearer [TOKEN]' },
+        body: requestData
       });
 
+      // 9. Make the request
+      const response = await fetch(url, options);
+
+      // 10. Process the response
+      const responseData = await response.json();
+      console.log('Server response:', response.status, responseData);
+
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(errorData.message || 'Error al guardar el curso');
+        throw new Error(responseData.message || 'Error al guardar el curso');
       }
 
-      const result = await response.json();
+      // Verify the response has the expected format
+      if (!responseData.data) {
+        console.error('Unexpected response format:', responseData);
+        throw new Error('El servidor devolvió una respuesta inesperada');
+      }
+
+      const createdCourse = responseData.data;
+      console.log('Course created/updated:', createdCourse);
+      
       toast.success(isEdit ? 'Curso actualizado correctamente' : 'Curso creado correctamente');
       
       if (onSuccess) {
-        onSuccess();
+        onSuccess(); // Pass the created course to the onSuccess callback
       } else if (!isEdit) {
-        router.push(`/instructor/courses/${result.data._id}`);
+        // Use the course ID from the response for redirection
+        if (createdCourse._id) {
+          router.push(`/instructor/courses/${createdCourse._id}`);
+        } else {
+          console.warn('No se pudo obtener el ID del curso de la respuesta');
+          router.push('/instructor/courses');
+        }
       }
-    } catch (error: Error | unknown) {
+    } catch (error) {
       console.error('Error saving course:', error);
       if (error instanceof Error) {
         toast.error(error.message);
@@ -404,59 +491,15 @@ const CourseForm: React.FC<CourseFormProps> = ({
             Imagen del Curso <span className="text-red-500">*</span>
           </Label>
           <div className="mt-1">
-            <label
-              htmlFor="image-upload"
-              className={`flex flex-col items-center justify-center w-full p-6 border-2 border-dashed rounded-xl cursor-pointer transition-colors ${
-                errors.image 
-                  ? 'border-red-500 bg-red-50 dark:bg-red-900/10 hover:bg-red-100 dark:hover:bg-red-900/20' 
-                  : 'border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/50 hover:bg-gray-100 dark:hover:bg-gray-700/70'
-              }`}
-            >
-              {imagePreview ? (
-                <div className="relative w-full h-48 md:h-64 rounded-lg overflow-hidden group">
-                  <Image
-                    src={imagePreview}
-                    alt="Vista previa de la imagen del curso"
-                    fill
-                    className="object-cover"
-                  />
-                  <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
-                    <span className="text-white font-medium px-4 py-2 bg-black/50 rounded-md">Cambiar imagen</span>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center pt-5 pb-6 text-center">
-                  <svg
-                    className="w-10 h-10 mb-3 text-gray-400"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                    xmlns="http://www.w3.org/2000/svg"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth="2"
-                      d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-                    ></path>
-                  </svg>
-                  <p className="mb-2 text-sm text-gray-500 dark:text-gray-400">
-                    <span className="font-semibold">Haz clic para subir</span> o arrastra una imagen
-                  </p>
-                  <p className="text-xs text-gray-500 dark:text-gray-400">
-                    PNG, JPG o WebP (máx. 5MB)
-                  </p>
-                </div>
-              )}
-              <input
-                id="image-upload"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleImageChange}
-                disabled={isLoading}
-              />
-            </label>
+            <FileUploadSimple
+              onFileSelected={handleImageChange}
+              previewUrl={imagePreview}
+              accept="image/*"
+              maxSize={5 * 1024 * 1024} // 5MB
+              label="Arrastra y suelta la imagen del curso aquí, o haz clic para seleccionar"
+              buttonText="Seleccionar imagen"
+              className={errors.image ? 'border-red-500 bg-red-50 dark:bg-red-900/10' : ''}
+            />
             {errors.image && (
               <p className="mt-1 text-sm text-red-500">{errors.image.message as string}</p>
             )}
@@ -490,8 +533,6 @@ const CourseForm: React.FC<CourseFormProps> = ({
                 </div>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
                   onClick={() => removeRequirement(index)}
                   className="h-10 w-10 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
                   disabled={isLoading}
@@ -510,8 +551,6 @@ const CourseForm: React.FC<CourseFormProps> = ({
           
           <Button
             type="button"
-            variant="outline"
-            size="sm"
             onClick={addRequirement}
             className="mt-2 text-sm"
             disabled={isLoading}
@@ -550,8 +589,6 @@ const CourseForm: React.FC<CourseFormProps> = ({
                 </div>
                 <Button
                   type="button"
-                  variant="ghost"
-                  size="icon"
                   onClick={() => removeLearningOutcome(index)}
                   className="h-10 w-10 text-gray-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/10"
                   disabled={isLoading}
@@ -570,8 +607,6 @@ const CourseForm: React.FC<CourseFormProps> = ({
           
           <Button
             type="button"
-            variant="outline"
-            size="sm"
             onClick={addLearningOutcome}
             className="mt-2 text-sm"
             disabled={isLoading}
@@ -614,19 +649,18 @@ const CourseForm: React.FC<CourseFormProps> = ({
 
       {/* Botones de acción */}
       <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 pt-2">
-        <Button
+        <button
           type="button"
-          variant="outline"
           onClick={() => router.back()}
+          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md border border-input bg-background px-8 h-11 text-sm font-medium transition-colors hover:bg-gray-50 hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 border-gray-300 text-gray-700 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700"
           disabled={isLoading}
-          className="h-11 px-6"
         >
           Cancelar
-        </Button>
-        <Button 
-          type="submit" 
+        </button>
+        <button 
+          type="submit"
+          className="inline-flex items-center justify-center gap-2 whitespace-nowrap rounded-md bg-primary px-8 h-11 text-sm font-medium text-primary-foreground shadow transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary-600 hover:bg-primary-700 focus-visible:ring-primary-500"
           disabled={isLoading}
-          className="h-11 px-8 bg-primary-600 hover:bg-primary-700 focus-visible:ring-primary-500"
         >
           {isLoading ? (
             <>
@@ -638,10 +672,10 @@ const CourseForm: React.FC<CourseFormProps> = ({
           ) : (
             'Crear curso'
           )}
-        </Button>
+        </button>
       </div>
     </form>
   );
-};
+}
 
 export default CourseForm;
