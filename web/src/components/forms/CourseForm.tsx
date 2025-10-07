@@ -78,13 +78,7 @@ const CourseForm: React.FC<CourseFormProps> = ({
   );
   const router = useRouter();
 
-  const {
-    register,
-    handleSubmit,
-    formState: { errors },
-    setValue,
-    getValues,
-  } = useForm<CourseFormValues>({
+  const form = useForm<CourseFormValues>({
     resolver: zodResolver(courseSchema) as unknown as Resolver<CourseFormValues, object>,
     defaultValues: {
       title: initialData.title || '',
@@ -144,9 +138,42 @@ const CourseForm: React.FC<CourseFormProps> = ({
   };
 
   // Handle form submission
-  const onSubmit: SubmitHandler<CourseFormValues> = async (data: CourseFormValues) => {
+  const onSubmit: SubmitHandler<CourseFormValues> = async (formData: CourseFormValues) => {
     try {
       setIsLoading(true);
+      
+      // 0. Verificar autenticación primero
+      const token = typeof window !== 'undefined' ? localStorage.getItem('token') : null;
+      if (!token) {
+        console.error('No se encontró el token de autenticación');
+        const redirectPath = encodeURIComponent(window.location.pathname);
+        window.location.href = `/login?redirect=${redirectPath}`;
+        return;
+      }
+      
+      // Verificar el token antes de continuar
+      try {
+        const tokenPayload = JSON.parse(atob(token.split('.')[1]));
+        console.log('Token payload:', tokenPayload);
+        console.log('User ID from token:', tokenPayload.userId);
+        console.log('User role from token:', tokenPayload.role);
+      } catch (error) {
+        console.error('Error al decodificar el token:', error);
+      }
+      
+      // 1. Preparar los datos del formulario
+      const data = {
+        ...formData,
+        price: formData.isFree ? 0 : (Number(formData.price) || 0),
+        requirements: Array.isArray(formData.requirements) 
+          ? formData.requirements.filter(Boolean).map((r: string) => r.trim()) 
+          : [],
+        learningOutcomes: Array.isArray(formData.learningOutcomes) 
+          ? formData.learningOutcomes.filter(Boolean).map((lo: string) => lo.trim())
+          : [],
+        isFree: Boolean(formData.isFree),
+        isPublished: Boolean(formData.isPublished)
+      };
       
       // 1. Preparar los datos del formulario
       const courseData = {
@@ -200,41 +227,57 @@ const CourseForm: React.FC<CourseFormProps> = ({
         : `${process.env.NEXT_PUBLIC_API_URL}/courses`;
       
       const method = isEdit ? 'PUT' : 'POST';
-      const token = localStorage.getItem('token');
       
-      if (!token) {
-        throw new Error('No se encontró el token de autenticación');
-      }
+      // No verificamos la autenticación aquí, dejamos que el backend maneje la autenticación
+      // Esto evita problemas si el endpoint de verificación falla
+      console.log('Enviando solicitud de actualización del curso...');
 
       // 7. Preparar los datos para enviar
       const requestData = {
         ...courseData,
         // Asegurarse de que los arrays no sean undefined
         requirements: courseData.requirements || [],
-        learningOutcomes: courseData.learningOutcomes || []
+        learningOutcomes: courseData.learningOutcomes || [],
+        // Incluir la imagen si existe
+        ...(data.image && typeof data.image === 'object' && {
+          image: {
+            url: data.image.url,
+            public_id: data.image.public_id,
+            format: data.image.format,
+            resource_type: data.image.resource_type || 'image',
+            ...(data.image.width && { width: data.image.width }),
+            ...(data.image.height && { height: data.image.height }),
+            bytes: data.image.bytes
+          }
+        })
       };
+      
+      console.log('Datos de la imagen a enviar:', requestData.image);
 
       // 8. Configurar las opciones de la petición
-      const options = {
-        method,
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify(requestData)
+      const headers: HeadersInit = {
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'Authorization': `Bearer ${token}`,
+        'X-Requested-With': 'XMLHttpRequest'
       };
+      
+      console.log('Token being sent:', token ? `${token.substring(0, 10)}...` : 'No token');
 
-      console.log('Enviando datos a:', url);
+      const options: RequestInit = {
+        method,
+        headers,
+        body: JSON.stringify(requestData),
+        credentials: 'include' as RequestCredentials
+      };
+      
+      console.log('Enviando solicitud al servidor...');
+      console.log('URL:', url);
+      console.log('Método:', method);
+      console.log('Headers:', headers);
       console.log('Datos enviados:', requestData);
 
-      console.log('Enviando petición a:', url);
-      console.log('Opciones de la petición:', {
-        method,
-        headers: { 'Authorization': 'Bearer [TOKEN]' },
-        body: requestData
-      });
-
-      // 9. Make the request
+            // 9. Make the request
       const response = await fetch(url, options);
 
       // 10. Process the response
@@ -242,7 +285,19 @@ const CourseForm: React.FC<CourseFormProps> = ({
       console.log('Server response:', response.status, responseData);
 
       if (!response.ok) {
-        throw new Error(responseData.message || 'Error al guardar el curso');
+        // Si el error es de autenticación, limpiar el token y redirigir al login
+        if (response.status === 401 || response.status === 403) {
+          console.error('Error de autenticación, redirigiendo al login...');
+          localStorage.removeItem('token'); // Limpiar token inválido
+          const redirectPath = encodeURIComponent(window.location.pathname);
+          window.location.href = `/login?redirect=${redirectPath}`;
+          return;
+        }
+        
+        // Para otros errores, mostrar el mensaje del servidor o un mensaje genérico
+        const errorMessage = responseData.message || 'Error al guardar el curso';
+        console.error('Error en la respuesta del servidor:', errorMessage);
+        throw new Error(errorMessage);
       }
 
       // Verify the response has the expected format
@@ -318,8 +373,10 @@ const CourseForm: React.FC<CourseFormProps> = ({
     { _id: 'design', name: 'Diseño' },
   ];
 
+  const { register, formState: { errors }, setValue, getValues } = form;
+  
   return (
-    <form onSubmit={handleSubmit(onSubmit)} className="space-y-8">
+    <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8">
       {/* Sección de Información Básica */}
       <div className="bg-white dark:bg-gray-800 p-6 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700">
         <div className="space-y-1 mb-6">

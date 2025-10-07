@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { Section } from '../models/section.model';
 import { ApiError } from '../utils/apiError';
 import { IUser } from '../types/user.types';
@@ -11,16 +11,9 @@ interface IAuthenticatedRequest extends Request {
 
 /**
  * @swagger
- * tags:
- *   name: Sections
- *   description: Gestión de secciones de cursos
- */
-
-/**
- * @swagger
  * components:
  *   schemas:
- *     Section:
+ *     SectionBase:
  *       type: object
  *       required:
  *         - title
@@ -30,37 +23,21 @@ interface IAuthenticatedRequest extends Request {
  *         _id:
  *           type: string
  *           format: ObjectId
- *           example: 5f8d0f4d7f4f1d4e3c8d9e0f
  *           description: ID único de la sección
  *         title:
  *           type: string
- *           minLength: 3
- *           maxLength: 100
- *           example: 'Introducción al curso'
  *           description: Título de la sección
- *         description:
- *           type: string
- *           maxLength: 500
- *           example: 'En esta sección aprenderás los conceptos básicos'
- *           description: Descripción detallada de la sección
  *         course:
  *           type: string
  *           format: ObjectId
- *           example: 5f8d0f4d7f4f1d4e3c8d9e0f
  *           description: ID del curso al que pertenece la sección
  *         order:
  *           type: integer
- *           minimum: 0
- *           example: 1
  *           description: Orden de la sección dentro del curso
- *         isPublished:
- *           type: boolean
- *           default: false
- *           description: Indica si la sección está publicada
  *         createdAt:
  *           type: string
  *           format: date-time
- *           description: Fecha de creación de la sección
+ *           description: Fecha de creación
  *         updatedAt:
  *           type: string
  *           format: date-time
@@ -70,29 +47,17 @@ interface IAuthenticatedRequest extends Request {
  *       type: object
  *       required:
  *         - title
- *         - course
  *         - order
  *       properties:
  *         title:
  *           type: string
  *           minLength: 3
  *           maxLength: 100
- *           example: 'Introducción al curso'
- *         description:
- *           type: string
- *           maxLength: 500
- *           example: 'En esta sección aprenderás los conceptos básicos'
- *         course:
- *           type: string
- *           format: ObjectId
- *           example: 5f8d0f4d7f4f1d4e3c8d9e0f
+ *           description: Título de la sección
  *         order:
  *           type: integer
  *           minimum: 0
- *           example: 1
- *         isPublished:
- *           type: boolean
- *           default: false
+ *           description: Orden de la sección
  * 
  *     UpdateSectionInput:
  *       type: object
@@ -101,160 +66,41 @@ interface IAuthenticatedRequest extends Request {
  *           type: string
  *           minLength: 3
  *           maxLength: 100
- *           example: 'Introducción al curso actualizada'
- *         description:
- *           type: string
- *           maxLength: 500
- *           example: 'Contenido actualizado de la sección'
+ *           description: Título de la sección
  *         order:
  *           type: integer
  *           minimum: 0
- *           example: 2
- *         isPublished:
- *           type: boolean
- *           example: true
+ *           description: Nuevo orden de la sección
  * 
  *     SectionWithLessons:
  *       allOf:
- *         - $ref: '#/components/schemas/Section'
+ *         - $ref: '#/components/schemas/SectionBase'
  *         - type: object
  *           properties:
  *             lessons:
  *               type: array
+ *               description: Lista de lecciones de la sección
  *               items:
  *                 $ref: '#/components/schemas/Lesson'
- *               description: Lista de lecciones de la sección
- *           default: false
- *           example: true
- *           description: Indica si la sección está publicada
- *         publishedAt:
- *           type: string
- *           format: date-time
- *           description: Fecha de publicación de la sección
- *         createdBy:
- *           type: string
- *           format: ObjectId
- *           description: ID del usuario que creó la sección
- *         updatedBy:
- *           type: string
- *           format: ObjectId
- *           description: ID del usuario que actualizó la sección por última vez
- *         createdAt:
- *           type: string
- *           format: date-time
- *         updatedAt:
- *           type: string
- *           format: date-time
- *         lessons:
- *           type: array
- *           items:
- *             type: string
- *             format: ObjectId
- *           description: IDs de las lecciones en esta sección
- *         lessonCount:
- *           type: integer
- *           description: Número de lecciones en la sección
- *         duration:
- *           type: number
- *           description: Duración total de la sección en minutos
- *
- *     CreateSectionInput:
- *       type: object
- *       required:
- *         - title
- *         - course
- *       properties:
- *         title:
- *           type: string
- *           minLength: 3
- *           maxLength: 100
- *           example: 'Introducción al curso'
- *         description:
- *           type: string
- *           maxLength: 500
- *           example: 'En esta sección aprenderás los conceptos básicos'
- *         course:
- *           type: string
- *           format: ObjectId
- *           example: 5f8d0f4d7f4f1d4e3c8d9e0f
- *         order:
- *           type: integer
- *           minimum: 0
- *           example: 1
- *         isPublished:
- *           type: boolean
- *           default: false
- *
- *     UpdateSectionInput:
- *       type: object
- *       properties:
- *         title:
- *           type: string
- *           minLength: 3
- *           maxLength: 100
- *           example: 'Introducción al curso actualizada'
- *         description:
- *           type: string
- *           maxLength: 500
- *           example: 'Contenido actualizado de la sección'
- *         order:
- *           type: integer
- *           minimum: 0
- *           example: 2
- *         isPublished:
- *           type: boolean
- *           example: true
- *
- *     SectionWithLessons:
- *       type: object
- *       properties:
- *         _id:
- *           type: string
- *           format: ObjectId
- *         title:
- *           type: string
- *         description:
- *           type: string
- *         order:
- *           type: integer
- *         lessons:
- *           type: array
- *           items:
- *             type: object
- *             properties:
- *               _id:
- *                 type: string
- *                 format: ObjectId
- *               title:
- *                 type: string
- *               duration:
- *                 type: number
- *               isPublished:
- *                 type: boolean
- *               isPreview:
- *                 type: boolean
- *               order:
- *                 type: number
- *               videoUrl:
- *                 type: string
- *                 format: uri
  */
 
 /**
  * @swagger
- * tags:
- *   name: Sections
- *   description: Gestión de secciones de cursos
- */
-
-/**
- * @swagger
- * /api/v1/sections:
+ * /api/v1/courses/{courseId}/sections:
  *   post:
- *     summary: Crear una nueva sección (instructor/admin)
+ *     summary: Crear una nueva sección en un curso
+ *     description: Crea una nueva sección en el curso especificado. Requiere permisos de instructor o administrador.
  *     tags: [Sections]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID del curso al que pertenecerá la sección
  *     requestBody:
  *       required: true
  *       content:
@@ -271,6 +117,7 @@ interface IAuthenticatedRequest extends Request {
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 data:
  *                   $ref: '#/components/schemas/Section'
  *       400:
@@ -279,6 +126,8 @@ interface IAuthenticatedRequest extends Request {
  *         $ref: '#/components/responses/UnauthorizedError'
  *       403:
  *         $ref: '#/components/responses/ForbiddenError'
+ *       404:
+ *         description: Curso no encontrado
  */
 export const createSection = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
@@ -304,17 +153,26 @@ export const createSection = async (req: IAuthenticatedRequest, res: Response, n
 
 /**
  * @swagger
- * /api/v1/sections/{id}:
+ * /api/v1/courses/{courseId}/sections/{id}:
  *   get:
  *     summary: Obtener una sección por ID
+ *     description: Obtiene los detalles de una sección específica dentro de un curso.
  *     tags: [Sections]
  *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID del curso al que pertenece la sección
  *       - in: path
  *         name: id
  *         required: true
  *         schema:
  *           type: string
- *         description: ID de la sección
+ *           format: ObjectId
+ *         description: ID de la sección a obtener
  *     responses:
  *       200:
  *         description: Detalles de la sección
@@ -325,12 +183,13 @@ export const createSection = async (req: IAuthenticatedRequest, res: Response, n
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 data:
  *                   $ref: '#/components/schemas/Section'
- *       404:
- *         description: Sección no encontrada
  *       400:
  *         description: ID inválido
+ *       404:
+ *         description: Sección no encontrada o no pertenece al curso especificado
  */
 export const getSection = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -357,9 +216,10 @@ export const getSection = async (req: Request, res: Response, next: NextFunction
 
 /**
  * @swagger
- * /api/v1/sections/course/{courseId}:
+ * /api/v1/courses/{courseId}/sections:
  *   get:
  *     summary: Obtener todas las secciones de un curso
+ *     description: Retorna la lista de secciones de un curso específico, opcionalmente incluyendo sus lecciones.
  *     tags: [Sections]
  *     parameters:
  *       - in: path
@@ -367,7 +227,8 @@ export const getSection = async (req: Request, res: Response, next: NextFunction
  *         required: true
  *         schema:
  *           type: string
- *         description: ID del curso
+ *           format: ObjectId
+ *         description: ID del curso del que se desean obtener las secciones
  *       - in: query
  *         name: includeLessons
  *         schema:
@@ -384,14 +245,22 @@ export const getSection = async (req: Request, res: Response, next: NextFunction
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 count:
  *                   type: integer
+ *                   description: Número total de secciones
+ *                   example: 3
  *                 data:
  *                   type: array
+ *                   description: Lista de secciones
  *                   items:
  *                     oneOf:
  *                       - $ref: '#/components/schemas/Section'
  *                       - $ref: '#/components/schemas/SectionWithLessons'
+ *       400:
+ *         description: ID de curso inválido
+ *       404:
+ *         description: Curso no encontrado
  */
 export const getSectionsByCourse = async (req: Request, res: Response, next: NextFunction) => {
   try {
@@ -421,19 +290,28 @@ export const getSectionsByCourse = async (req: Request, res: Response, next: Nex
 
 /**
  * @swagger
- * /api/v1/sections/{id}:
+ * /api/v1/courses/{courseId}/sections/{sectionId}:
  *   put:
- *     summary: Actualizar una sección (instructor/propietario o admin)
+ *     summary: Actualizar una sección
+ *     description: Actualiza los datos de una sección específica. Requiere permisos de instructor o administrador.
  *     tags: [Sections]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: courseId
  *         required: true
  *         schema:
  *           type: string
- *         description: ID de la sección
+ *           format: ObjectId
+ *         description: ID del curso al que pertenece la sección
+ *       - in: path
+ *         name: sectionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la sección a actualizar
  *     requestBody:
  *       required: true
  *       content:
@@ -450,6 +328,7 @@ export const getSectionsByCourse = async (req: Request, res: Response, next: Nex
  *               properties:
  *                 success:
  *                   type: boolean
+ *                   example: true
  *                 data:
  *                   $ref: '#/components/schemas/Section'
  *       400:
@@ -459,7 +338,7 @@ export const getSectionsByCourse = async (req: Request, res: Response, next: Nex
  *       403:
  *         $ref: '#/components/responses/ForbiddenError'
  *       404:
- *         description: Sección no encontrada
+ *         description: Sección no encontrada o no pertenece al curso especificado
  */
 export const updateSection = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
@@ -497,19 +376,28 @@ export const updateSection = async (req: IAuthenticatedRequest, res: Response, n
 
 /**
  * @swagger
- * /api/v1/sections/{id}:
+ * /api/v1/courses/{courseId}/sections/{sectionId}:
  *   delete:
- *     summary: Eliminar una sección (instructor/propietario o admin)
+ *     summary: Eliminar una sección
+ *     description: Elimina una sección específica de un curso. Requiere permisos de instructor o administrador.
  *     tags: [Sections]
  *     security:
  *       - bearerAuth: []
  *     parameters:
  *       - in: path
- *         name: id
+ *         name: courseId
  *         required: true
  *         schema:
  *           type: string
- *         description: ID de la sección
+ *           format: ObjectId
+ *         description: ID del curso al que pertenece la sección
+ *       - in: path
+ *         name: sectionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la sección a eliminar
  *     responses:
  *       200:
  *         description: Sección eliminada exitosamente
@@ -520,16 +408,18 @@ export const updateSection = async (req: IAuthenticatedRequest, res: Response, n
  *               properties:
  *                 success:
  *                   type: boolean
- *                 data:
- *                   type: object
+ *                   example: true
+ *                 message:
+ *                   type: string
+ *                   example: 'Sección eliminada correctamente'
  *       400:
- *         description: ID inválido
+ *         description: ID inválido o no se puede eliminar la sección
  *       401:
  *         $ref: '#/components/responses/UnauthorizedError'
  *       403:
  *         $ref: '#/components/responses/ForbiddenError'
  *       404:
- *         description: Sección no encontrada
+ *         description: Sección no encontrada o no pertenece al curso especificado
  */
 export const deleteSection = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
@@ -565,12 +455,20 @@ export const deleteSection = async (req: IAuthenticatedRequest, res: Response, n
 
 /**
  * @swagger
- * /api/v1/sections/reorder:
- *   post:
+ * /api/v1/courses/{courseId}/sections/reorder:
+ *   patch:
  *     summary: Reordenar secciones de un curso (instructor/propietario o admin)
  *     tags: [Sections]
  *     security:
  *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID del curso
  *     requestBody:
  *       required: true
  *       content:
@@ -578,15 +476,11 @@ export const deleteSection = async (req: IAuthenticatedRequest, res: Response, n
  *           schema:
  *             type: object
  *             required:
- *               - courseId
  *               - sections
  *             properties:
- *               courseId:
- *                 type: string
- *                 format: ObjectId
- *                 example: 5f8d0f4d7f4f1d4e3c8d9e0f
  *               sections:
  *                 type: array
+ *                 description: Array de objetos con el ID de la sección y su nuevo orden
  *                 items:
  *                   type: object
  *                   required:
@@ -596,9 +490,11 @@ export const deleteSection = async (req: IAuthenticatedRequest, res: Response, n
  *                     id:
  *                       type: string
  *                       format: ObjectId
+ *                       description: ID de la sección
  *                     order:
  *                       type: integer
  *                       minimum: 0
+ *                       description: Nuevo orden de la sección
  *     responses:
  *       200:
  *         description: Secciones reordenadas exitosamente
@@ -619,11 +515,16 @@ export const deleteSection = async (req: IAuthenticatedRequest, res: Response, n
  *         $ref: '#/components/responses/ForbiddenError'
  */
 export const reorderSections = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
-  try {
-    const { courseId, sections } = req.body;
+  const session = await mongoose.startSession();
+  session.startTransaction();
 
-    if (!courseId || !sections || !Array.isArray(sections)) {
-      return next(new ApiError(400, 'Se requieren courseId y sections en el cuerpo de la solicitud'));
+  try {
+    const { courseId } = req.params;
+    const { sections } = req.body;
+    const userId = req.user?._id;
+
+    if (!Array.isArray(sections) || sections.length === 0) {
+      return next(new ApiError(400, 'Se requiere un arreglo de secciones con sus nuevos órdenes'));
     }
 
     // Verificar que el usuario es admin o instructor del curso
@@ -631,14 +532,46 @@ export const reorderSections = async (req: IAuthenticatedRequest, res: Response,
       return next(new ApiError(403, 'No tienes permiso para reordenar las secciones'));
     }
 
-    const sectionIds = sections.map(s => s.id);
-    await Section.reorderSections(courseId, sectionIds);
+    // Verificar que todas las secciones pertenecen al curso
+    const sectionsInCourse = await Section.countDocuments({
+      _id: { $in: sections.map(s => new mongoose.Types.ObjectId(s.id)) },
+      course: new mongoose.Types.ObjectId(courseId)
+    });
+
+    if (sectionsInCourse !== sections.length) {
+      return next(new ApiError(400, 'Algunas secciones no pertenecen al curso especificado'));
+    }
+
+    // Actualizar el orden de las secciones
+    const bulkOps = sections.map(section => ({
+      updateOne: {
+        filter: { 
+          _id: new mongoose.Types.ObjectId(section.id), 
+          course: new mongoose.Types.ObjectId(courseId) 
+        },
+        update: { $set: { order: section.order } }
+      }
+    }));
+
+    await Section.bulkWrite(bulkOps, { session });
+    
+    // Actualizar el campo updatedAt del curso
+    await mongoose.model('Course').findByIdAndUpdate(
+      new mongoose.Types.ObjectId(courseId), 
+      { updatedAt: new Date() }, 
+      { session }
+    );
+
+    await session.commitTransaction();
+    session.endSession();
     
     res.status(200).json({
       success: true,
-      data: {}
+      message: 'Secciones reordenadas exitosamente'
     });
   } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
     next(new ApiError(400, `Error al reordenar las secciones: ${error.message}`));
   }
 };

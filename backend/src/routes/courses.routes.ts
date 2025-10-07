@@ -7,7 +7,6 @@ const router = Router();
 // Public routes
 router.get('/', courseController.getCourses);
 router.get('/:id', courseController.getCourse);
-router.get('/categories/:categoryId/courses', courseController.getCoursesByCategory);
 
 // Protected routes (require authentication)
 router.use(protect);

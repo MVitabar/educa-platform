@@ -27,7 +27,7 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 app.use(fileUpload({
   useTempFiles: true,
   tempFileDir: '/tmp/',
-  limits: { fileSize: 50 * 1024 * 1024 }, // 50MB
+  limits: { fileSize: 50 * 1024 * 1024 },
   abortOnLimit: true
 }));
 
@@ -47,14 +47,13 @@ app.use((req, res, next) => {
 
 // Swagger documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
-
-// API Routes with /api/v1 prefix
-app.use('/api/v1', router);
-
 app.get('/api-docs.json', (req, res) => {
   res.setHeader('Content-Type', 'application/json');
   res.send(swaggerSpec);
 });
+
+// Mount routes with API prefix
+app.use(router);
 
 // 404 handler for undefined routes
 app.use((req, res, next) => {
@@ -98,4 +97,5 @@ process.on('unhandledRejection', (err: Error) => {
   process.exit(1);
 });
 
+// Start the server
 startServer();

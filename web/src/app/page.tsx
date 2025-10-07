@@ -34,6 +34,7 @@ export default function Home() {
     const fetchCourses = async () => {
       try {
         setIsLoading(true);
+        console.log('Fetching courses from API...');
         const response = await apiClient.get<CourseResponse[]>('/courses', {
           params: {
             status: 'published',
@@ -42,9 +43,12 @@ export default function Home() {
           }
         });
         
+        console.log('API Response:', response);
+        
         if (Array.isArray(response)) {
+          console.log('Courses data received:', response);
           // Transform the response to ensure it matches CourseResponse
-          const transformedCourses = response.map(course => {
+          const transformedCourses = response.map((course: CourseResponse) => {
             // Handle image - ensure it's either a string or CloudinaryImage
             let image: string | CloudinaryImage;
             if (typeof course.image === 'string') {
@@ -84,10 +88,25 @@ export default function Home() {
             } as CourseResponse;
           });
           
+          console.log('Transformed courses:', transformedCourses);
           setCourses(transformedCourses);
         }
-      } catch (err) {
+      } catch (error) {
+        interface ApiError extends Error {
+          response?: {
+            data?: {
+              message?: string;
+              [key: string]: unknown;
+            };
+          };
+        }
+        const err = error as ApiError;
         console.error('Error fetching courses:', err);
+        console.error('Error details:', {
+          message: err.message,
+          stack: err.stack,
+          response: err.response?.data
+        });
         setError('Error al cargar los cursos. Por favor, intenta de nuevo más tarde.');
       } finally {
         setIsLoading(false);

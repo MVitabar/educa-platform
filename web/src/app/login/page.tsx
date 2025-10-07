@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Lock, Mail, Eye, EyeOff, Loader2 } from 'lucide-react';
+import { setAuthTokens } from '@/lib/auth';
 
 export default function LoginPage() {
   const [formData, setFormData] = useState({
@@ -82,8 +83,7 @@ const handleSubmit = async (e: React.FormEvent) => {
       throw new Error('Formato de respuesta inesperado del servidor');
     }
 
-    console.log('Token recibido, guardando en localStorage...');
-    localStorage.setItem('token', data.token);
+    console.log('Token recibido, guardando en auth system...');
     
     const userData = data.data.user;
     const userRole = userData.role || 'student';
@@ -91,11 +91,24 @@ const handleSubmit = async (e: React.FormEvent) => {
     console.log('Rol del usuario:', userRole);
     console.log('Datos del usuario:', JSON.stringify(userData, null, 2));
     
+    // Store tokens using our auth system
+    setAuthTokens({
+      accessToken: data.token,
+      refreshToken: data.refreshToken || '', // Use the refresh token if available
+      expiresIn: 3600 // 1 hour default
+    });
+    
+    // Store user data in localStorage (this is separate from the auth tokens)
     localStorage.setItem('userRole', userRole);
     localStorage.setItem('userData', JSON.stringify(userData));
     
     console.log(`Redirigiendo a /${userRole}/dashboard`);
-    router.push(`/${userRole}/dashboard`);
+    
+    // Get the returnTo URL from query params or use the default dashboard
+    const searchParams = new URLSearchParams(window.location.search);
+    const returnTo = searchParams.get('returnTo') || `/${userRole}/dashboard`;
+    
+    router.push(returnTo);
     
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión';

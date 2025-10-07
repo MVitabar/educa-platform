@@ -13,8 +13,18 @@ export interface CloudinaryImage {
 }
 
 // Interfaz base del curso
-export interface CourseBase {
+type CourseId = {
+  id: string;
+  _id?: never;
+} | {
   _id: string;
+  id?: never;
+} | {
+  id: string;
+  _id: string;
+};
+
+export type CourseBase = CourseId & {
   title: string;
   description: string;
   category: string;
@@ -31,16 +41,26 @@ export interface CourseBase {
   createdAt: string | { $date: string };
   updatedAt: string | { $date: string };
   __v?: number;
+};
+
+// Función helper para obtener el ID de un curso
+export function getCourseId(course: CourseBase): string {
+  if ('id' in course && course.id) return course.id;
+  if ('_id' in course && course._id) return course._id;
+  throw new Error('Course must have either id or _id');
 }
 
 // Interfaz para la respuesta de la API
-export interface CourseResponse extends CourseBase {
+export interface CourseResponse extends Omit<CourseBase, 'instructor' | 'rating'> {
+  // Incluimos tanto id como _id para compatibilidad
+  id?: string;
+  _id?: string;
   instructor: {
     _id: string;
     name?: string;
     avatar?: string;
   };
-  rating: {
+  rating?: {
     average: number;
     count: number;
   };

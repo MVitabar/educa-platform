@@ -12,12 +12,9 @@ import { IUser, UserRole } from '../types/user.types';
 /**
  * @swagger
  * tags:
- *   name: Users
- *   description: Gestión de usuarios
- */
-
-/**
- * @swagger
+ *   - name: Users
+ *     description: Gestión de usuarios
+ *
  * components:
  *   schemas:
  *     UserProfile:
@@ -25,6 +22,7 @@ import { IUser, UserRole } from '../types/user.types';
  *       properties:
  *         _id:
  *           type: string
+ *           format: ObjectId
  *           description: ID del usuario
  *         name:
  *           type: string
@@ -43,6 +41,9 @@ import { IUser, UserRole } from '../types/user.types';
  *         bio:
  *           type: string
  *           description: Biografía del usuario
+ *         isActive:
+ *           type: boolean
+ *           description: Indica si el usuario está activo
  *         createdAt:
  *           type: string
  *           format: date-time
@@ -71,49 +72,6 @@ type SimpleCourse = {
 // Promisify crypto.randomBytes
 const randomBytes = promisify(crypto.randomBytes);
 
-/**
- * @swagger
- * components:
- *   schemas:
- *     UserProfile:
- *       type: object
- *       properties:
- *         _id:
- *           type: string
- *         name:
- *           type: string
- *         email:
- *           type: string
- *           format: email
- *         role:
- *           type: string
- *           enum: [student, instructor, admin]
- *         avatar:
- *           type: string
- *         bio:
- *           type: string
- *         isActive:
- *           type: boolean
- *         createdAt:
- *           type: string
- *           format: date-time
- *         updatedAt:
- *           type: string
- *           format: date-time
- * 
- *   responses:
- *     UnauthorizedError:
- *       description: No se proporcionó token o es inválido
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             properties:
- *               status:
- *                 type: string
- *               message:
- *                 type: string
- */
 
 /**
  * @swagger
@@ -784,6 +742,7 @@ export const getAllUsers = async (req: any, res: Response, next: NextFunction) =
  *         required: true
  *         schema:
  *           type: string
+ *           format: ObjectId
  *         description: ID del usuario
  *     responses:
  *       200:
@@ -839,6 +798,7 @@ export const getUser = async (req: Request, res: Response, next: NextFunction) =
  *         required: true
  *         schema:
  *           type: string
+ *           format: ObjectId
  *         description: ID del usuario
  *     requestBody:
  *       required: true
@@ -918,6 +878,7 @@ export const updateUser = async (req: Request, res: Response, next: NextFunction
  *         required: true
  *         schema:
  *           type: string
+ *           format: ObjectId
  *         description: ID del usuario
  *     responses:
  *       204:

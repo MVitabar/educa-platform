@@ -7,17 +7,24 @@ import {
   PencilIcon,
   TrashIcon,
   StarIcon,
+  BookOpenIcon,
+  EyeIcon,
 } from "@heroicons/react/24/outline";
 import { toast } from "react-hot-toast";
 import Link from "next/link";
 import Image from "next/image";
-import { CourseResponse } from "@/types/course";
+import { CourseResponse, CloudinaryImage } from "@/types/course";
 
 const InstructorCoursesPage = () => {
   const router = useRouter();
   const [courses, setCourses] = useState<CourseResponse[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isDeleting, setIsDeleting] = useState<string | null>(null);
+  
+  // Función para obtener el ID de un curso de forma segura
+  const getSafeCourseId = (course: CourseResponse): string => {
+    return course.id || course._id || '';
+  };
 
   // Obtener los cursos del instructor
   useEffect(() => {
@@ -30,8 +37,10 @@ const InstructorCoursesPage = () => {
         }
 
         setIsLoading(true);
+        
+        // Usar el servicio de instructor para obtener los cursos
         const response = await fetch(
-          `${process.env.NEXT_PUBLIC_API_URL}/dashboard/instructor/courses`,
+          `${process.env.NEXT_PUBLIC_API_URL}/courses?mine=true&limit=100`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -70,30 +79,22 @@ const InstructorCoursesPage = () => {
         const data = await response.json();
         console.log("Respuesta del servidor:", data);
 
-        if (
-          !data ||
-          (Array.isArray(data) && data.length === 0) ||
-          (typeof data === "object" && !data.courses && !data.data)
-        ) {
-          console.log("No se encontraron cursos o la respuesta está vacía");
+        // Verificar si la respuesta es un array o un objeto con una propiedad data
+        let coursesData = [];
+        if (Array.isArray(data)) {
+          coursesData = data;
+        } else if (data.data && Array.isArray(data.data)) {
+          coursesData = data.data;
+        } else if (data.courses && Array.isArray(data.courses)) {
+          coursesData = data.courses;
+        } else {
+          console.log("Formato de respuesta inesperado:", data);
           setCourses([]);
           return;
         }
 
-        // Intentar diferentes estructuras de respuesta
-        let coursesData = [];
-        if (Array.isArray(data)) {
-          coursesData = data;
-        } else if (data.courses) {
-          coursesData = data.courses;
-        } else if (data.data && Array.isArray(data.data)) {
-          coursesData = data.data;
-        } else if (data.data && data.data.courses) {
-          coursesData = data.data.courses;
-        }
-
         console.log("Cursos extraídos:", coursesData);
-        setCourses(coursesData || []);
+        setCourses(coursesData);
       } catch (error) {
         console.error("Error al cargar los cursos:", error);
         toast.error(
@@ -124,11 +125,15 @@ const InstructorCoursesPage = () => {
   };
   // Eliminar un curso
   const handleDeleteCourse = async (courseId: string) => {
-    if (
-      !window.confirm(
-        "¿Estás seguro de que deseas eliminar este curso? Esta acción no se puede deshacer."
-      )
-    ) {
+    if (!courseId) {
+      console.error('ID de curso no válido');
+      toast.error('No se pudo eliminar el curso: ID no válido');
+      return;
+    }
+
+    if (!window.confirm(
+      "¿Estás seguro de que deseas eliminar este curso? Esta acción no se puede deshacer."
+    )) {
       return;
     }
 
@@ -136,12 +141,18 @@ const InstructorCoursesPage = () => {
       setIsDeleting(courseId);
       const token = localStorage.getItem("token");
 
+      if (!token) {
+        router.push("/login?redirect=/instructor/courses");
+        return;
+      }
+
       const response = await fetch(
         `${process.env.NEXT_PUBLIC_API_URL}/courses/${courseId}`,
         {
           method: "DELETE",
           headers: {
-            Authorization: `Bearer ${token}`,
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json',
           },
         }
       );
@@ -150,7 +161,8 @@ const InstructorCoursesPage = () => {
         throw new Error("Error al eliminar el curso");
       }
 
-      setCourses(courses.filter((course) => course._id !== courseId));
+      // Actualizar la lista de cursos filtrando el eliminado
+      setCourses(courses.filter((course) => getSafeCourseId(course) !== courseId));
       toast.success("Curso eliminado correctamente");
     } catch (error) {
       console.error("Error al eliminar el curso:", error);
@@ -172,9 +184,12 @@ const InstructorCoursesPage = () => {
   };
 
   // Obtener la URL de la imagen del curso
-  const getImageUrl = (imagePath: string) => {
+  const getImageUrl = (imagePath: string | CloudinaryImage) => {
     if (!imagePath) return "/images/course-placeholder.jpg";
-    if (imagePath.startsWith("http")) return imagePath;
+    if (typeof imagePath === 'object' && 'url' in imagePath) {
+      return imagePath.url; // Return the URL from CloudinaryImage object
+    }
+    if (typeof imagePath === 'string' && imagePath.startsWith("http")) return imagePath;
     return `${process.env.NEXT_PUBLIC_API_URL}/uploads/${imagePath}`;
   };
 
@@ -260,6 +275,7 @@ const InstructorCoursesPage = () => {
                           alt={course.title}
                           width={128}
                           height={80}
+                          priority={true} // Priorizar todas las imágenes en esta vista
                         />
                       </div>
                       <div className="min-w-0 flex-1">
@@ -317,28 +333,53 @@ const InstructorCoursesPage = () => {
                         </div>
                         <div>Actualizado: {formatDate(course.updatedAt)}</div>
                       </div>
-                      <div className="flex space-x-2">
+                      <div className="flex flex-wrap gap-2">
+                        {/* Editar */}
                         <Link
-                          href={`/instructor/courses/${course._id}/edit`}
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-600"
+                          href={`/instructor/courses/${getSafeCourseId(course)}/edit`}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-200 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-600"
                         >
                           <PencilIcon className="h-4 w-4 mr-1" />
                           Editar
                         </Link>
+
+                        {/* Currículum */}
                         <Link
-                          href={`/courses/${course.slug}`}
-                          target="_blank"
-                          className="inline-flex items-center px-3 py-1.5 border border-gray-300 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-600"
+                          href={`/instructor/courses/${getSafeCourseId(course)}/curriculum`}
+                          className="inline-flex items-center px-3 py-1.5 border border-gray-200 shadow-sm text-sm font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-600"
                         >
+                          <BookOpenIcon className="h-4 w-4 mr-1" />
+                          Currículum
+                        </Link>
+
+                        {/* Ver */}
+                        <Link
+                          href={course.slug ? `/courses/${course.slug}` : `/courses/${getSafeCourseId(course)}`}
+                          target="_blank"
+                          className={`inline-flex items-center px-3 py-1.5 border shadow-sm text-sm font-medium rounded-md ${
+                            course.isPublished 
+                              ? 'border-gray-300 text-gray-700 bg-white hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-600' 
+                              : 'border-gray-200 text-gray-400 bg-gray-100 cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-500'
+                          }`}
+                          onClick={(e) => {
+                            if (!course.isPublished) {
+                              e.preventDefault();
+                              toast.error('El curso debe estar publicado para poder verlo');
+                            }
+                          }}
+                        >
+                          <EyeIcon className="h-4 w-4 mr-1" />
                           Ver
                         </Link>
+
+                        {/* Eliminar */}
                         <button
                           type="button"
-                          onClick={() => handleDeleteCourse(course._id)}
-                          disabled={isDeleting === course._id}
+                          onClick={() => handleDeleteCourse(getSafeCourseId(course))}
+                          disabled={isDeleting === getSafeCourseId(course)}
                           className="inline-flex items-center px-3 py-1.5 border border-transparent text-sm font-medium rounded-md text-white bg-red-600 hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 disabled:opacity-50 disabled:cursor-not-allowed"
                         >
-                          {isDeleting === course._id ? (
+                          {isDeleting === getSafeCourseId(course) ? (
                             "Eliminando..."
                           ) : (
                             <>

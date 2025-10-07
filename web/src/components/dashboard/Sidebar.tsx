@@ -209,16 +209,16 @@ export default function Sidebar() {
       roles: ['student'] 
     },
     { 
-      name: 'Mis Clases', 
-      href: `/${userRole}/sessions`, 
-      icon: Calendar,
-      roles: ['student', 'instructor'] 
-    },
-    { 
       name: 'Mis Cursos', 
       href: `/${userRole}/courses`, 
       icon: BookOpen,
       roles: ['instructor'] 
+    },
+    { 
+      name: 'Clases', 
+      href: `/${userRole}/sessions`, 
+      icon: Calendar,
+      roles: ['student', 'instructor'] 
     },
     { 
       name: 'Mensajes', 

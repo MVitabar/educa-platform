@@ -608,15 +608,57 @@ export const updateCourse = async (req: IAuthenticatedRequest, res: Response, ne
       return next(new ApiError(404, 'Curso no encontrado'));
     }
 
+    // Debug logs
+    console.log('=== DEBUG: Update Course Permission Check ===');
+    console.log('Request User:', req.user);
+    console.log('Course Instructor ID:', course.instructor);
+    
+    // Asegurarse de que los IDs sean cadenas para la comparación
+    const courseInstructorId = course.instructor._id ? 
+      course.instructor._id.toString() : 
+      course.instructor.toString();
+      
+    const userId = req.user?._id?.toString();
+    
+    console.log('User ID from Token (string):', userId);
+    console.log('Course Instructor ID (string):', courseInstructorId);
+    console.log('Is Admin?', req.user?.role === 'admin');
+    console.log('Is Instructor?', req.user?.role === 'instructor');
+    console.log('Is Course Instructor?', courseInstructorId === userId);
+    
     // Verificar que el usuario es el instructor del curso o admin
-    if (!req.user || (course.instructor.toString() !== req.user._id.toString() && req.user.role !== 'admin')) {
+    if (!req.user || (courseInstructorId !== userId && req.user.role !== 'admin')) {
+      console.error('Permission denied - User is not the course instructor or admin');
+      console.error(`User ID: ${userId}, Course Instructor ID: ${courseInstructorId}`);
       return next(new ApiError(403, 'No tienes permiso para actualizar este curso'));
     }
 
-    course = await Course.findByIdAndUpdate(req.params.id, req.body, {
-      new: true,
-      runValidators: true
-    });
+    // Actualizar los campos del curso con los datos recibidos
+    const updateData = { ...req.body };
+    
+    // Si se está actualizando la imagen, extraer solo la URL si es un objeto
+    if (updateData.image) {
+      if (typeof updateData.image === 'object' && updateData.image !== null) {
+        // Si es un objeto con una propiedad 'url', usar esa URL
+        updateData.image = updateData.image.url || 'default-course.jpg';
+      } else if (typeof updateData.image !== 'string') {
+        // Si no es ni string ni objeto con url, usar valor por defecto
+        updateData.image = 'default-course.jpg';
+      }
+      // Si es string, se deja como está
+    }
+    
+    console.log('Actualizando curso con datos:', JSON.stringify(updateData, null, 2));
+    
+    // Actualizar el curso
+    course = await Course.findByIdAndUpdate(
+      req.params.id, 
+      updateData,
+      {
+        new: true,
+        runValidators: true
+      }
+    ).populate('instructor', 'name email avatar');
     
     res.status(200).json({
       success: true,
@@ -675,8 +717,28 @@ export const deleteCourse = async (req: IAuthenticatedRequest, res: Response, ne
       return next(new ApiError(404, 'Curso no encontrado'));
     }
 
+    // Debug logs
+    console.log('=== DEBUG: Delete Course Permission Check ===');
+    console.log('Request User:', req.user);
+    console.log('Course Instructor ID:', course.instructor);
+    
+    // Asegurarse de que los IDs sean cadenas para la comparación
+    const courseInstructorId = course.instructor._id ? 
+      course.instructor._id.toString() : 
+      course.instructor.toString();
+      
+    const userId = req.user?._id?.toString();
+    
+    console.log('User ID from Token (string):', userId);
+    console.log('Course Instructor ID (string):', courseInstructorId);
+    console.log('Is Admin?', req.user?.role === 'admin');
+    console.log('Is Instructor?', req.user?.role === 'instructor');
+    console.log('Is Course Instructor?', courseInstructorId === userId);
+    
     // Verificar que el usuario es el instructor del curso o admin
-    if (!req.user || (course.instructor.toString() !== req.user._id.toString() && req.user.role !== 'admin')) {
+    if (!req.user || (courseInstructorId !== userId && req.user.role !== 'admin')) {
+      console.error('Permission denied - User is not the course instructor or admin');
+      console.error(`User ID: ${userId}, Course Instructor ID: ${courseInstructorId}`);
       return next(new ApiError(403, 'No tienes permiso para eliminar este curso'));
     }
 

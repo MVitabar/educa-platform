@@ -32,15 +32,57 @@ const withAuth = (handler: (req: Request & { user: IUser & { _id: Types.ObjectId
 /**
  * @swagger
  * tags:
- *   name: Progress
- *   description: Seguimiento del progreso del usuario en los cursos
+ *   - name: Progress
+ *     description: Seguimiento del progreso del usuario en los cursos
+ *
+ * components:
+ *   schemas:
+ *     Progress:
+ *       type: object
+ *       properties:
+ *         _id:
+ *           type: string
+ *           format: ObjectId
+ *           description: ID del progreso
+ *         user:
+ *           type: string
+ *           format: ObjectId
+ *           description: ID del usuario
+ *         course:
+ *           type: string
+ *           format: ObjectId
+ *           description: ID del curso
+ *         completedLessons:
+ *           type: array
+ *           items:
+ *             type: string
+ *             format: ObjectId
+ *           description: IDs de las lecciones completadas
+ *         progress:
+ *           type: number
+ *           minimum: 0
+ *           maximum: 100
+ *           description: Porcentaje de progreso (0-100)
+ *         lastAccessed:
+ *           type: string
+ *           format: date-time
+ *           description: Fecha del último acceso al curso
+ *         createdAt:
+ *           type: string
+ *           format: date-time
+ *           description: Fecha de creación
+ *         updatedAt:
+ *           type: string
+ *           format: date-time
+ *           description: Fecha de última actualización
  */
 
 /**
  * @swagger
- * /api/v1/progress/course/{courseId}:
+ * /api/v1/courses/{courseId}/progress:
  *   get:
  *     summary: Obtener el progreso de un curso específico
+ *     description: Obtiene el progreso del usuario autenticado para un curso específico
  *     tags: [Progress]
  *     security:
  *       - bearerAuth: []
@@ -50,7 +92,8 @@ const withAuth = (handler: (req: Request & { user: IUser & { _id: Types.ObjectId
  *         required: true
  *         schema:
  *           type: string
- *         description: ID del curso
+ *           format: ObjectId
+ *         description: ID del curso del que se desea obtener el progreso
  *     responses:
  *       200:
  *         description: Progreso del curso obtenido exitosamente
@@ -83,9 +126,10 @@ export const getCourseProgress = catchAsync(withAuth(async (req, res, next) => {
 
 /**
  * @swagger
- * /api/v1/progress/course/{courseId}/track:
+ * /api/v1/courses/{courseId}/sections/{sectionId}/lessons/{lessonId}/track:
  *   post:
  *     summary: Actualizar el progreso de una lección
+ *     description: Actualiza el progreso de una lección específica para el usuario autenticado
  *     tags: [Progress]
  *     security:
  *       - bearerAuth: []
@@ -95,7 +139,23 @@ export const getCourseProgress = catchAsync(withAuth(async (req, res, next) => {
  *         required: true
  *         schema:
  *           type: string
- *         description: ID del curso
+ *           format: ObjectId
+ *         description: ID del curso al que pertenece la lección (ObjectId)
+ *       - in: path
+ *         name: sectionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la sección a la que pertenece la lección (ObjectId)
+ *         deprecated: true  // Se mantiene por compatibilidad pero no se utiliza
+ *       - in: path
+ *         name: lessonId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la lección a actualizar (ObjectId)
  *     requestBody:
  *       required: true
  *       content:
@@ -103,12 +163,8 @@ export const getCourseProgress = catchAsync(withAuth(async (req, res, next) => {
  *           schema:
  *             type: object
  *             required:
- *               - lessonId
  *               - progress
  *             properties:
- *               lessonId:
- *                 type: string
- *                 description: ID de la lección
  *               progress:
  *                 type: number
  *                 minimum: 0
@@ -130,40 +186,40 @@ export const getCourseProgress = catchAsync(withAuth(async (req, res, next) => {
  *       400:
  *         description: Se requiere el ID de la lección y el progreso
  *       401:
- *         description: No autorizado - Se requiere autenticación
+ *         $ref: '#/components/responses/UnauthorizedError'
  *       404:
  *         description: No se encontró el progreso para este curso
  */
 export const trackLessonProgress = catchAsync(withAuth(async (req, res, next) => {
-  const { lessonId, progress } = req.body;
-  
-  if (!lessonId || progress === undefined) {
-    return next(new AppError('Lesson ID and progress are required', 400));
+  const { courseId, lessonId } = req.params;
+  const { progress } = req.body;
+
+  if (!progress || isNaN(progress) || progress < 0 || progress > 100) {
+    return next(new AppError('Se requiere un progreso válido entre 0 y 100', 400));
   }
 
   const userProgress = await Progress.getOrCreate(
     req.user._id,
-    new Types.ObjectId(req.params.courseId)
+    new Types.ObjectId(courseId)
   );
-  
-  await userProgress.updateLessonProgress(new Types.ObjectId(lessonId), progress);
-  
-  const updatedProgress = await Progress.getUserCourseProgress(
-    req.user._id,
-    new Types.ObjectId(req.params.courseId)
+
+  await userProgress.updateLessonProgress(
+    new Types.ObjectId(lessonId),
+    progress
   );
-  
+
   res.status(200).json({
     status: 'success',
-    data: updatedProgress
+    data: userProgress
   });
 }));
 
 /**
  * @swagger
- * /api/v1/progress/course/{courseId}/complete:
+ * /api/v1/courses/{courseId}/sections/{sectionId}/lessons/{lessonId}/complete:
  *   post:
  *     summary: Marcar una lección como completada
+ *     description: Marca una lección como completada para el usuario autenticado
  *     tags: [Progress]
  *     security:
  *       - bearerAuth: []
@@ -173,19 +229,23 @@ export const trackLessonProgress = catchAsync(withAuth(async (req, res, next) =>
  *         required: true
  *         schema:
  *           type: string
- *         description: ID del curso
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required:
- *               - lessonId
- *             properties:
- *               lessonId:
- *                 type: string
- *                 description: ID de la lección a marcar como completada
+ *           format: ObjectId
+ *         description: ID del curso al que pertenece la lección (ObjectId)
+ *       - in: path
+ *         name: sectionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la sección a la que pertenece la lección (ObjectId)
+ *         deprecated: true  // Se mantiene por compatibilidad pero no se utiliza
+ *       - in: path
+ *         name: lessonId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la lección a marcar como completada (ObjectId)
  *     responses:
  *       200:
  *         description: Lección marcada como completada exitosamente
@@ -202,27 +262,25 @@ export const trackLessonProgress = catchAsync(withAuth(async (req, res, next) =>
  *       400:
  *         description: Se requiere el ID de la lección
  *       401:
- *         description: No autorizado - Se requiere autenticación
+ *         $ref: '#/components/responses/UnauthorizedError'
  *       404:
  *         description: No se encontró el progreso para este curso
  */
 export const completeLesson = catchAsync(withAuth(async (req, res, next) => {
-  const { lessonId } = req.body;
-  
-  if (!lessonId) {
-    return next(new AppError('Lesson ID is required', 400));
-  }
+  const { courseId, lessonId } = req.params;
 
   const userProgress = await Progress.getOrCreate(
     req.user._id,
-    new Types.ObjectId(req.params.courseId)
+    new Types.ObjectId(courseId)
   );
   
-  await userProgress.completeLesson(new Types.ObjectId(lessonId));
+  await userProgress.completeLesson(
+    new Types.ObjectId(lessonId)
+  );
   
   const updatedProgress = await Progress.getUserCourseProgress(
     req.user._id,
-    new Types.ObjectId(req.params.courseId)
+    new Types.ObjectId(courseId)
   );
   
   res.status(200).json({
@@ -233,7 +291,7 @@ export const completeLesson = catchAsync(withAuth(async (req, res, next) => {
 
 /**
  * @swagger
- * /api/v1/progress/course/{courseId}/stats:
+ * /api/v1/courses/{courseId}/progress/stats:
  *   get:
  *     summary: Obtener estadísticas del curso (solo instructores/administradores)
  *     tags: [Progress]

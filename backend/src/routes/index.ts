@@ -1,142 +1,49 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { notFoundHandler } from '../middlewares/error.middleware';
-
-// Import all route handlers
+import { Router } from 'express';
 import authRouter from './auth.routes';
 import usersRouter from './users.routes';
 import coursesRouter from './courses.routes';
+import categoriesRouter from './categories.routes';
 import lessonsRouter from './lessons.routes';
 import sectionsRouter from './sections.routes';
-import progressRouter from './progress.routes';
 import enrollmentsRouter from './enrollments.routes';
-import categoriesRouter from './categories.routes';
 import reviewsRouter from './reviews.routes';
 import resourcesRouter from './resources.routes';
-import dashboardRouter from './dashboard.routes';
+import progressRouter from './progress.routes';
 import uploadRouter from './upload.routes';
 
 const router = Router();
 
-// Debug flag to control route printing
-const DEBUG_ROUTES = process.env.NODE_ENV !== 'production';
-
-// Log all incoming requests
-router.use((req: Request, res: Response, next: NextFunction) => {
-  console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}`);
-  next();
-});
-
 // Health check endpoint
-router.get('/health', (req: Request, res: Response) => {
-  res.status(200).json({
-    status: 'ok',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
-  });
+router.get('/health', (req, res) => {
+  res.status(200).json({ status: 'ok', message: 'Server is running' });
 });
 
-// Mount API routes
-const mountRoute = (path: string, router: Router, name: string) => {
-  router.use(path, router);
-  console.log(`${name} routes mounted at ${path}`);
-};
+// API v1 routes
+const apiRouter = Router();
 
-// Core routes
-router.use('/auth', authRouter);
-console.log('Auth routes mounted at /auth');
+// Auth routes
+apiRouter.use('/auth', authRouter);
+console.log('Auth routes mounted at /api/v1/auth');
 
-router.use('/users', usersRouter);
-console.log('Users routes mounted at /users');
+// Users routes
+apiRouter.use('/users', usersRouter);
+console.log('Users routes mounted at /api/v1/users');
 
-// Upload routes
-router.use('/upload', uploadRouter);
-console.log('Upload routes mounted at /upload');
+// Other API routes
+apiRouter.use('/categories', categoriesRouter);
+apiRouter.use('/courses', coursesRouter);
+apiRouter.use('/lessons', lessonsRouter);
+apiRouter.use('/enrollments', enrollmentsRouter);
+apiRouter.use('/reviews', reviewsRouter);
+apiRouter.use('/resources', resourcesRouter);
+apiRouter.use('/progress', progressRouter);
+apiRouter.use('/upload', uploadRouter);
 
-// Dashboard routes
-router.use('/dashboard', dashboardRouter);
-console.log('Dashboard routes mounted at /dashboard');
+// Mount sections routes under courses
+apiRouter.use('/courses/:courseId/sections', sectionsRouter);
 
-// Course-related routes
-router.use('/courses', coursesRouter);
-console.log('Courses routes mounted at /courses');
-
-router.use('/lessons', lessonsRouter);
-console.log('Lessons routes mounted at /lessons');
-
-router.use('/sections', sectionsRouter);
-console.log('Sections routes mounted at /sections');
-
-// New feature routes (to be implemented)
-router.use('/enrollments', enrollmentsRouter);
-console.log('Enrollments routes mounted at /enrollments');
-
-router.use('/categories', categoriesRouter);
-console.log('Categories routes mounted at /categories');
-
-router.use('/reviews', reviewsRouter);
-console.log('Reviews routes mounted at /reviews');
-
-router.use('/resources', resourcesRouter);
-console.log('Resources routes mounted at /resources');
-
-// Progress tracking routes
-router.use('/progress', progressRouter);
-console.log('Progress tracking routes mounted at /progress');
-
-// File upload routes
-router.use('/upload', uploadRouter);
-console.log('Upload routes mounted at /upload');
-
-// 404 handler for all routes
-router.use(notFoundHandler);
-
-// Debug: Print all registered routes
-if (DEBUG_ROUTES) {
-  const printRoutes = () => {
-    const routes: { method: string; path: string }[] = [];
-    const seen = new Set<string>();
-
-    const processStack = (stack: any[], parentPath = '') => {
-      stack.forEach((layer) => {
-        if (!layer.route && !layer.name) return;
-
-        if (layer.route) {
-          const methods = Object.keys(layer.route.methods)
-            .filter(method => method !== '_all')
-            .map(method => method.toUpperCase())
-            .join(',');
-
-          if (methods) {
-            // Get the path and ensure it doesn't start with 'i/'
-            let path = layer.route.path;
-            if (path.startsWith('i/')) {
-              path = path.substring(1); // Remove the 'i' at the beginning
-            }
-            const fullPath = `${parentPath}${path === '/' ? '' : path}`;
-            const routeKey = `${methods} ${fullPath}`;
-            
-            if (!seen.has(routeKey)) {
-              seen.add(routeKey);
-              routes.push({ method: methods, path: fullPath });
-            }
-          }
-        } else if (layer.name === 'router' && layer.handle) {
-          // Don't add any prefix for router paths
-          processStack(layer.handle.stack, parentPath);
-        }
-      });
-    };
-
-    processStack(router.stack, '');
-
-    console.log('\n=== Registered Routes ===');
-    routes.forEach(route => {
-      console.log(`${route.method.padEnd(7)} ${route.path}`);
-    });
-    console.log('========================\n');
-  };
-
-  setTimeout(printRoutes, 1000);
-}
+// Mount the API router under /api/v1
+router.use('/api/v1', apiRouter);
+console.log('API v1 routes mounted at /api/v1');
 
 export default router;

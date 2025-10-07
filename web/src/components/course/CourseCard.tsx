@@ -13,6 +13,7 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
               src={course.image}
               alt={course.title}
               fill
+              priority={true}
               className="object-cover"
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />
@@ -21,6 +22,7 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
               src={course.image.url}
               alt={course.title}
               fill
+              priority={true}
               className="object-cover"
               sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
             />
@@ -45,7 +47,7 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
       
       <div className="p-5">
         <div className="flex items-center mb-3">
-          <div className="flex" aria-label={`Calificación: ${course.rating?.average || 0} de 5 estrellas`}>
+          <div className="flex" aria-label={`Calificación: ${course.rating?.average?.toFixed(1) || '0'} de 5 estrellas`}>
             {[...Array(5)].map((_, i) => (
               <StarIcon 
                 key={i} 
@@ -55,7 +57,10 @@ export default function CourseCard({ course, isAuthenticated = false }: { course
             ))}
           </div>
           <span className="ml-2 text-sm text-neutral-700 dark:text-neutral-300">
-            {course.rating ? course.rating.average.toFixed(1) : 'Nuevo'} <span className="text-neutral-500 dark:text-neutral-400">({course.rating.count} estudiantes)</span>
+            {course.rating?.average ? course.rating.average.toFixed(1) : 'Nuevo'}{' '}
+            <span className="text-neutral-500 dark:text-neutral-400">
+              ({course.rating?.count || 0} {course.rating?.count === 1 ? 'estudiante' : 'estudiantes'})
+            </span>
           </span>
         </div>
         

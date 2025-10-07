@@ -4,23 +4,31 @@ import { protect, restrictTo } from '../middlewares/auth.middleware';
 
 const router = Router();
 
-// Public routes
-router.get('/lessons/:lessonId/resources', resourceController.getLessonResources);
-router.get('/resources/:id', resourceController.getResource);
+// Public routes - get resources for a lesson
+router.get(
+  '/courses/:courseId/sections/:sectionId/lessons/:lessonId/resources',
+  resourceController.getLessonResources
+);
 
 // Protected routes
 router.use(protect);
 
+// Get a single resource by ID
+router.get(
+  '/courses/:courseId/sections/:sectionId/lessons/:lessonId/resources/:id',
+  resourceController.getResource
+);
+
 // Instructor routes
 router.post(
-  '/lessons/:lessonId/resources',
+  '/courses/:courseId/sections/:sectionId/lessons/:lessonId/resources',
   restrictTo('instructor'),
   resourceController.uploadResource
 );
 
 // Resource management routes (instructor only)
 router
-  .route('/resources/:id')
+  .route('/courses/:courseId/sections/:sectionId/lessons/:lessonId/resources/:id')
   .put(restrictTo('instructor'), resourceController.updateResource)
   .delete(restrictTo('instructor', 'admin'), resourceController.deleteResource);
 
