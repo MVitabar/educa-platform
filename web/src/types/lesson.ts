@@ -1,5 +1,13 @@
+export interface ContentBlock {
+  type: string;
+  content: string;
+  order: number;
+  _id?: string;
+  duration?: number;
+}
+
 export interface Resource {
-  _id: string;
+  _id?: string;
   title: string;
   url: string;
   type: 'pdf' | 'doc' | 'zip' | 'other';
@@ -20,7 +28,7 @@ export interface Lesson {
   _id: string;
   title: string;
   description?: string;
-  content: string;
+  contentBlocks: ContentBlock[];
   duration: number; // en minutos
   videoUrl?: string;
   resources: Resource[];
@@ -45,7 +53,7 @@ export interface LessonWithProgress extends Omit<Lesson, 'section'> {
 export interface CreateLessonInput {
   title: string;
   description?: string;
-  content: string;
+  contentBlocks: ContentBlock[];
   duration: number;
   videoUrl?: string;
   order: number;
@@ -56,10 +64,10 @@ export interface CreateLessonInput {
 export interface LessonFormValues {
   title: string;
   description?: string;
-  content: string;
   duration: number;
   videoUrl?: string;
   isPreview: boolean;
   isPublished: boolean;
   sectionId: string;
+  contentBlocks: ContentBlock[];
 }

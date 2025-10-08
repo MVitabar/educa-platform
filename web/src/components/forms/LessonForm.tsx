@@ -19,16 +19,20 @@ import { toast } from 'sonner';
 // Define the form schema with required fields first
 const lessonFormSchema = z.object({
   title: z.string().min(1, 'El título es requerido'),
-  description: z.string().default(''),
+  description: z.string().optional(),
   content: z.string().min(1, 'El contenido es requerido'),
-  duration: z.preprocess(
-    (val) => (val ? Number(val) : 0),
-    z.number().min(1, 'La duración debe ser mayor a 0')
-  ),
+  duration: z.number().min(1, 'La duración debe ser mayor a 0'),
   videoUrl: z.string().url('URL de video inválida').or(z.literal('')).optional(),
   isPreview: z.boolean().default(false),
   isPublished: z.boolean().default(false),
-  sectionId: z.string()
+  sectionId: z.string(),
+  contentBlocks: z.array(z.object({
+    _id: z.string().optional(),
+    type: z.string(),
+    content: z.string(),
+    order: z.number(),
+    duration: z.number().optional()
+  })).default([])
 });
 
 type LessonFormValues = z.infer<typeof lessonFormSchema>;
@@ -206,7 +210,6 @@ export function LessonForm(props: LessonFormProps) {
       content: initialData.content || '',
       duration: initialData.duration || 0,
       videoUrl: initialData.videoUrl || '',
-      order: initialData.order || 0,
       isPreview: initialData.isPreview || false,
       isPublished: initialData.isPublished || false,
       sectionId: sectionId || initialData.sectionId || ''

@@ -13,6 +13,7 @@ export interface LessonInSection {
   description?: string;
   content: string;
   duration: number;
+  contentBlocks: ContentBlock[];
   isPublished: boolean;
   isPreview: boolean;
   order: number;

@@ -149,7 +149,7 @@ sectionSchema.statics.getCourseSectionsWithLessons = async function(courseId: Ty
           { $sort: { order: 1 } },
           {
             $project: {
-              title: 1,
+              contentBlocks: 1,  // Incluir contentBlocks
               duration: 1,
               isPublished: 1,
               isPreview: 1,
