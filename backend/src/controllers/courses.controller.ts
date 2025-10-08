@@ -2,6 +2,8 @@ import { Request, Response, NextFunction } from 'express';
 import mongoose, { Types, SortOrder } from 'mongoose';
 import slugify from 'slugify';
 import Course from '../models/course.model';
+import { Section } from '../models/section.model';
+import { Lesson } from '../models/lesson.model';
 import { Category } from '../models/category.model';
 import { ICategory, ICategoryDocument } from '../types/category.types';
 import { ApiError } from '../utils/apiError';
@@ -346,15 +348,20 @@ export const getCourses = async (req: Request, res: Response, next: NextFunction
     const skip = (page - 1) * limit;
 
     // 8) Ejecutar consulta
-    // Usamos una aserción de tipo más específica para queryObj
-    const findQuery = Course.find(queryObj as Record<string, unknown>)
-      .sort(sortBy)
+    // Usamos una aserción de tipo más específica para sortBy
+    type SortOptions = string | { [key: string]: 1 | -1 | { $meta: any } } | [string, 1 | -1][];
+    const sortOptions = sortBy as SortOptions;
+    
+    // @ts-ignore - Ignorar error de tipo complejo
+    const findQuery = Course.find(queryObj)
+      .sort(sortOptions)
       .skip(skip)
       .limit(limit)
       .populate('instructor', 'name email avatar')
       .populate('category', 'name');
 
-    const countQuery = Course.countDocuments(queryObj as Record<string, unknown>);
+    // @ts-ignore - Ignorar error de tipo complejo
+    const countQuery = Course.countDocuments(queryObj);
 
     const [courses, total] = await Promise.all([findQuery, countQuery]);
 
@@ -709,13 +716,27 @@ export const updateCourse = async (req: IAuthenticatedRequest, res: Response, ne
  *       404:
  *         description: Curso no encontrado
  */
+interface ICourseDocument extends Document {
+  _id: Types.ObjectId;
+  instructor: Types.ObjectId | { _id: Types.ObjectId };
+  // Add other course properties as needed
+}
+
 export const deleteCourse = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
+  let session: mongoose.ClientSession | null = null;
+  
   try {
-    const course = await Course.findById(req.params.id);
+    const course = await Course.findById(req.params.id).lean<{
+      _id: Types.ObjectId;
+      instructor: Types.ObjectId | { _id: Types.ObjectId };
+    }>();
     
     if (!course) {
       return next(new ApiError(404, 'Curso no encontrado'));
     }
+    
+    // Asegurarnos de que course._id esté disponible
+    const courseId = course._id.toString();
 
     // Debug logs
     console.log('=== DEBUG: Delete Course Permission Check ===');
@@ -741,18 +762,74 @@ export const deleteCourse = async (req: IAuthenticatedRequest, res: Response, ne
       console.error(`User ID: ${userId}, Course Instructor ID: ${courseInstructorId}`);
       return next(new ApiError(403, 'No tienes permiso para eliminar este curso'));
     }
-
-    await course.deleteOne();
     
-    res.status(200).json({
-      success: true,
-      data: {}
-    });
-  } catch (error: any) {
-    if (error.name === 'CastError') {
+    // Asegurarnos de que el curso tiene un ID válido
+    if (!course._id) {
       return next(new ApiError(400, 'ID de curso inválido'));
     }
-    next(new ApiError(500, `Error al eliminar el curso: ${error.message}`));
+
+    // Iniciar una transacción para asegurar la consistencia de los datos
+    session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+      const courseId = course._id.toString();
+      
+      // 1. Obtener todas las secciones del curso
+      const sections = await Section.find({ course: courseId }).session(session);
+      
+      // 2. Eliminar todas las lecciones de cada sección
+      for (const section of sections) {
+        const sectionId = section._id.toString();
+        // Eliminar las lecciones de la sección
+        const deleteLessonsResult = await Lesson.deleteMany(
+          { section: sectionId },
+          { session }
+        );
+        console.log(`Eliminadas ${deleteLessonsResult.deletedCount} lecciones de la sección ${sectionId}`);
+      }
+      
+      // 3. Eliminar todas las secciones del curso
+      const deleteSectionsResult = await Section.deleteMany(
+        { course: courseId },
+        { session }
+      );
+      console.log(`Eliminadas ${deleteSectionsResult.deletedCount} secciones del curso ${courseId}`);
+      
+      // 4. Finalmente, eliminar el curso
+      await Course.deleteOne({ _id: courseId }).session(session!);
+      
+      // Confirmar la transacción
+      await session.commitTransaction();
+      session.endSession();
+      
+      console.log(`Curso ${courseId} y sus secciones y lecciones asociadas eliminadas correctamente`);
+      
+      return res.status(200).json({
+        success: true,
+        data: {}
+      });
+    } catch (error: any) {
+      // Si hay un error, deshacer la transacción si existe
+      if (session) {
+        try {
+          await session.abortTransaction();
+        } catch (abortError) {
+          console.error('Error al abortar la transacción:', abortError);
+        } finally {
+          session.endSession();
+        }
+      }
+      
+      console.error('Error al eliminar el curso y sus dependencias:', error);
+      
+      if (error.name === 'CastError') {
+        return next(new ApiError(400, 'ID de curso inválido'));
+      }
+      return next(new ApiError(500, `Error al eliminar el curso: ${error.message}`));
+    }
+  } catch (error) {
+    next(error);
   }
 };
 
@@ -883,7 +960,8 @@ export const getCoursesByCategory = async (req: Request, res: Response, next: Ne
       };
     }
 
-    res.status(200).json({
+    // Asegurarse de que todos los caminos de retorno estén correctamente formateados
+    return res.status(200).json({
       success: true,
       count: courses.length,
       pagination,
@@ -894,11 +972,13 @@ export const getCoursesByCategory = async (req: Request, res: Response, next: Ne
   }
 };
 
-export default {
+const controller = {
   getCourses,
   getCourse,
   createCourse,
   updateCourse,
   deleteCourse,
   getCoursesByCategory
-};
+} as const;
+
+export default controller;

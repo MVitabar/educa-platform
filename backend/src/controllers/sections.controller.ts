@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose, { Types } from 'mongoose';
 import { Section } from '../models/section.model';
+import { Lesson } from '../models/lesson.model';
 import Course from '../models/course.model';
 import { ApiError } from '../utils/apiError';
 import { IUser } from '../types/user.types';
@@ -507,17 +508,48 @@ export const deleteSection = async (req: IAuthenticatedRequest, res: Response, n
       return next(new ApiError(403, 'No tienes permiso para eliminar esta sección'));
     }
 
-    // Verificar que la sección no tenga lecciones
-    if (section.lessons && section.lessons.length > 0) {
-      return next(new ApiError(400, 'No se puede eliminar una sección que contiene lecciones'));
-    }
+    // Iniciar una transacción para asegurar la consistencia de los datos
+    const session = await mongoose.startSession();
+    session.startTransaction();
 
-    await section.deleteOne();
+    try {
+      // Eliminar todas las lecciones asociadas a esta sección
+      // Primero, obtener el ID de la sección como string
+      const sectionIdStr = section._id.toString();
+      
+      // Eliminar las lecciones que pertenecen a esta sección
+      const deleteResult = await Lesson.deleteMany(
+        { section: sectionIdStr },
+        { session }
+      );
+      
+      console.log(`Eliminadas ${deleteResult.deletedCount} lecciones de la sección ${sectionIdStr}`);
+
+      // Eliminar la sección
+      await section.deleteOne({ session });
+      
+      // Confirmar la transacción
+      await session.commitTransaction();
+      session.endSession();
+      
+      console.log(`Sección ${section._id} y sus lecciones asociadas eliminadas correctamente`);
     
-    res.status(200).json({
-      success: true,
-      data: {}
-    });
+      res.status(200).json({
+        success: true,
+        message: 'Sección y sus lecciones eliminadas correctamente'
+      });
+    } catch (error: any) {
+      // Si hay un error, deshacer la transacción
+      await session.abortTransaction();
+      session.endSession();
+      
+      console.error('Error al eliminar la sección y sus lecciones:', error);
+      
+      if (error.name === 'CastError') {
+        return next(new ApiError(400, 'ID de sección inválido'));
+      }
+      next(new ApiError(500, `Error al eliminar la sección: ${error.message}`));
+    }
   } catch (error: any) {
     if (error.name === 'CastError') {
       return next(new ApiError(400, 'ID de sección inválido'));
