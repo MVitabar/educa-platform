@@ -1,59 +1,52 @@
 import { Router } from 'express';
-import * as sectionController from '../controllers/sections.controller';
+import { 
+  createSection, 
+  getSectionsByCourse, 
+  updateSection, 
+  deleteSection, 
+  reorderSections,
+  getNextLessonOrder
+} from '../controllers/sections.controller';
 import { protect, restrictTo } from '../middlewares/auth.middleware';
+import lessonsRouter from './lessons.routes';
 
-// Create a new router with mergeParams: true to maintain parent route params
+// Create a new router with mergeParams to handle parameters from parent routes
 const router = Router({ mergeParams: true });
 
-// Apply authentication to all routes except GET / (getSectionsByCourse)
-router.get('/', sectionController.getSectionsByCourse);
-
-// Apply authentication to all other routes
+// Apply authentication to all routes
 router.use(protect);
 
-/**
- * @route GET /api/v1/courses/:courseId/sections
- * @desc Get all sections for a course
- * @access Public
- */
-// Moved above the protect middleware to make it public
+// Get all sections in a course
+router.get('/', getSectionsByCourse);
 
-// Rutas solo para instructores
-router.use(restrictTo('instructor'));
+// Create a new section (instructor only)
+router.post(
+  '/',
+  restrictTo('instructor'),
+  createSection
+);
 
-/**
- * @route POST /api/v1/courses/:courseId/sections
- * @desc Crear una nueva sección en un curso
- * @access Privado (instructor)
- */
-router.post('/', sectionController.createSection);
+// Reorder sections (instructor only)
+router.patch(
+  '/reorder',
+  restrictTo('instructor'),
+  reorderSections
+);
 
-/**
- * @route PATCH /api/v1/courses/:courseId/sections/reorder
- * @desc Reordenar las secciones de un curso
- * @access Privado (instructor)
- */
-router.patch('/reorder', sectionController.reorderSections);
+// Get next lesson order (instructor only)
+router.get(
+  '/:sectionId/next-lesson-order',
+  restrictTo('instructor'),
+  getNextLessonOrder
+);
 
-/**
- * @route GET /api/v1/courses/:courseId/sections/:id
- * @desc Obtener una sección específica
- * @access Público (sin autenticación)
- */
-router.get('/:id', sectionController.getSection);
+// Update or delete a section (instructor only)
+router
+  .route('/:sectionId')
+  .put(restrictTo('instructor'), updateSection)
+  .delete(restrictTo('instructor', 'admin'), deleteSection);
 
-/**
- * @route PUT /api/v1/courses/:courseId/sections/:id
- * @desc Actualizar una sección
- * @access Privado (instructor)
- */
-router.put('/:id', sectionController.updateSection);
-
-/**
- * @route DELETE /api/v1/courses/:courseId/sections/:id
- * @desc Eliminar una sección
- * @access Privado (instructor, admin)
- */
-router.delete('/:id', restrictTo('instructor', 'admin'), sectionController.deleteSection);
+// Mount lessons routes under sections
+router.use('/:sectionId/lessons', lessonsRouter);
 
 export default router;

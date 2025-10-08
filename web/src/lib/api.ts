@@ -1,15 +1,12 @@
 import { getAccessToken } from './auth';
 
 // Ensure the API URL is properly formatted
-let API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+let API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
-// Remove trailing slashes and add /api/v1 if not present
-API_URL = API_URL.replace(/\/+$/, '');
-if (!API_URL.endsWith('/api/v1')) {
-  API_URL = `${API_URL}/api/v1`;
-}
+// Remove trailing slashes and any existing /api/v1
+API_BASE_URL = API_BASE_URL.replace(/\/+$/, '').replace(/\/api\/v1$/, '');
 
-console.log('API URL:', API_URL);
+console.log('API Base URL:', API_BASE_URL);
 
 interface ApiResponse<T> {
   success: boolean;
@@ -24,7 +21,14 @@ export async function apiRequest<T>(
 ): Promise<T> {
   // Get the current token
   const token = await getAccessToken();
-  console.log('API Request to:', `${API_URL}${endpoint}`);
+  
+  // Remove any leading slashes from the endpoint to prevent double slashes
+  const cleanEndpoint = endpoint.replace(/^\/+/, '');
+  
+  // Construct the full URL
+  const fullUrl = `${API_BASE_URL}/api/v1/${cleanEndpoint}`;
+  
+  console.log('API Request to:', fullUrl);
   console.log('Using token:', token ? 'Token exists' : 'No token');
   
   // If no token is available and this is not a public endpoint
@@ -59,7 +63,7 @@ export async function apiRequest<T>(
     });
 
     console.log('=== Request Details ===');
-    console.log('URL:', `${API_URL}${endpoint}`);
+    console.log('URL:', fullUrl);
     console.log('Method:', options.method || 'GET');
     console.log('Headers:', JSON.stringify(Object.fromEntries(headers.entries()), null, 2));
     console.log('Token present:', !!token);
@@ -74,7 +78,7 @@ export async function apiRequest<T>(
       console.log('Request body:', options.body);
     }
     
-    const response = await fetch(`${API_URL}${endpoint}`, requestOptions);
+    const response = await fetch(fullUrl, requestOptions);
 
     console.log('=== Response ===');
     console.log('Status:', response.status, response.statusText);

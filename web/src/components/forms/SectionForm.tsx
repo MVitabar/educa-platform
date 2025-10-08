@@ -58,7 +58,13 @@ export function SectionForm({
 
   const { handleSubmit } = form;
 
-  const onSubmit: SubmitHandler<SectionFormValues> = async (data) => {
+  const onSubmit: SubmitHandler<SectionFormValues> = async (data, event) => {
+    // Prevent default form submission
+    event?.preventDefault?.();
+    
+    // Prevent double submission
+    if (isLoading) return;
+    
     try {
       setIsLoading(true);
       
@@ -66,13 +72,12 @@ export function SectionForm({
         // Actualizar sección existente
         await updateSection(courseId, initialData._id, data);
         toast.success('Sección actualizada correctamente');
+        onSuccess(data);
       } else {
         // Crear nueva sección
         await createSection(courseId, data);
-        toast.success('Sección creada correctamente');
+        // No llamamos a onSuccess aquí porque la lógica de éxito ya está en handleAddSection
       }
-      
-      onSuccess(data);
     } catch (error: unknown) {
       console.error('Error al guardar la sección:', error);
       const errorMessage = error instanceof Error ? error.message : 'Error al guardar la sección';
@@ -81,11 +86,15 @@ export function SectionForm({
       setIsLoading(false);
     }
   };
-  
+
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSubmit(onSubmit)(e);
+  };
 
   return (
     <FormProvider {...form}>
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+      <form onSubmit={handleFormSubmit} className="space-y-6">
         <div className="space-y-4">
           <TypedFormField<SectionFormValues>
             name="title"

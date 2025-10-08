@@ -1,5 +1,7 @@
 import { Schema, model, Types, Document, Model } from 'mongoose';
 import { ISection, ISectionMethods, ISectionModel } from '../types/section.types';
+import { Lesson } from './lesson.model';
+import { generateSectionId } from '../utils/generateId';
 
 // Type-safe model creation helper
 function createModel<T, U extends Model<any>, M extends {}>(name: string, schema: Schema<T, U, M>): U {
@@ -8,6 +10,10 @@ function createModel<T, U extends Model<any>, M extends {}>(name: string, schema
 
 const sectionSchema = new Schema<ISection, ISectionModel, ISectionMethods>(
   {
+    _id: {
+      type: String,
+      required: true
+    },
     title: {
       type: String,
       required: [true, 'El título es obligatorio'],
@@ -52,7 +58,8 @@ const sectionSchema = new Schema<ISection, ISectionModel, ISectionMethods>(
   {
     timestamps: true,
     toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    toObject: { virtuals: true },
+    _id: false // Disable automatic _id generation since we're using custom _id
   }
 );
 
@@ -308,18 +315,10 @@ sectionSchema.pre<SectionDocument>('save', function(next) {
   next();
 });
 
-// Update course's section count when a section is added
-sectionSchema.post<SectionDocument>('save', async function(doc) {
-  const Course = this.model('Course');
-  await Course.updateSectionCount(doc.course);
-});
+// No need to update section count as we're using countDocuments()
 
-// Update course's section count when a section is removed
+// Remove all lessons in this section when it's removed
 sectionSchema.post<SectionDocument>('remove', async function(doc) {
-  const Course = this.model('Course');
-  await Course.updateSectionCount(doc.course);
-  
-  // Remove all lessons in this section
   const Lesson = this.model('Lesson');
   await Lesson.deleteMany({ section: doc._id });
 });

@@ -1,8 +1,10 @@
 import { Request, Response, NextFunction } from 'express';
 import mongoose, { Types } from 'mongoose';
 import { Section } from '../models/section.model';
+import Course from '../models/course.model';
 import { ApiError } from '../utils/apiError';
 import { IUser } from '../types/user.types';
+import { generateSectionId } from '../utils/generateId';
 
 // Extend the Express Request type to include user
 interface IAuthenticatedRequest extends Request {
@@ -130,23 +132,91 @@ interface IAuthenticatedRequest extends Request {
  *         description: Curso no encontrado
  */
 export const createSection = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
+  console.log('=== Inicio de createSection ===');
+  console.log('Headers:', req.headers);
+  console.log('Body:', req.body);
+  
+  const session = await mongoose.startSession();
+  await session.startTransaction();
+  
   try {
+    console.log('Verificando permisos del usuario...');
     // Verificar que el usuario es instructor o admin
     if (!req.user || (req.user.role !== 'instructor' && req.user.role !== 'admin')) {
+      console.log('Usuario no autorizado para crear secciones');
+      await session.abortTransaction();
+      session.endSession();
       return next(new ApiError(403, 'Solo los instructores pueden crear secciones'));
     }
 
-    const section = await Section.create({
-      ...req.body,
-      createdBy: req.user._id,
-      updatedBy: req.user._id
-    });
+    // Get courseId from URL params
+    const { courseId } = req.params;
+    console.log('ID del curso:', courseId);
+    
+    // Validate courseId
+    if (!mongoose.Types.ObjectId.isValid(courseId)) {
+      console.log('ID de curso inválido:', courseId);
+      await session.abortTransaction();
+      session.endSession();
+      return next(new ApiError(400, 'ID de curso inválido'));
+    }
 
+    console.log('Verificando existencia del curso...');
+    // Check if course exists and get sections count
+    const course = await Course.exists({ _id: courseId }).session(session);
+    if (!course) {
+      console.log('Curso no encontrado:', courseId);
+      await session.abortTransaction();
+      session.endSession();
+      return next(new ApiError(404, 'Curso no encontrado'));
+    }
+
+    console.log('Contando secciones existentes...');
+    // Get current sections count
+    const sectionsCount = await Section.countDocuments({ course: courseId }).session(session);
+    console.log('Número de secciones actuales:', sectionsCount);
+
+    // Generate custom section ID
+    const sectionId = generateSectionId(courseId);
+    console.log('Nuevo ID de sección generado:', sectionId);
+
+    // Create section with custom ID
+    const sectionData = {
+      _id: sectionId,
+      ...req.body,
+      course: courseId,
+      createdBy: req.user._id,
+      updatedBy: req.user._id,
+      order: sectionsCount // Set initial order
+    };
+    
+    console.log('Datos de la nueva sección:', sectionData);
+    
+    // Create the section using the model directly with the session
+    console.log('Creando la sección...');
+    const section = new Section(sectionData);
+    await section.save({ session });
+    console.log('Sección creada en la base de datos');
+
+    console.log('Haciendo commit de la transacción...');
+    await session.commitTransaction();
+    session.endSession();
+    console.log('Transacción completada con éxito');
+
+    // Populate the createdBy field for the response
+    console.log('Obteniendo datos completos de la sección...');
+    const populatedSection = await Section.findById(section._id)
+      .populate('createdBy', 'name email')
+      .populate('updatedBy', 'name email');
+
+    console.log('Enviando respuesta al cliente...');
     res.status(201).json({
       success: true,
-      data: section
+      data: populatedSection
     });
   } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
     next(new ApiError(400, `Error al crear la sección: ${error.message}`));
   }
 };
@@ -576,11 +646,88 @@ export const reorderSections = async (req: IAuthenticatedRequest, res: Response,
   }
 };
 
+/**
+ * @swagger
+ * /api/v1/courses/{courseId}/sections/{sectionId}/next-lesson-order:
+ *   get:
+ *     summary: Obtener el siguiente orden disponible para una lección en la sección
+ *     description: Obtiene el siguiente número de orden disponible para una nueva lección en la sección especificada
+ *     tags: [Sections]
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID del curso
+ *       - in: path
+ *         name: sectionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *           format: ObjectId
+ *         description: ID de la sección
+ *     responses:
+ *       200:
+ *         description: Siguiente orden disponible para una nueva lección
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: object
+ *               properties:
+ *                 success:
+ *                   type: boolean
+ *                   example: true
+ *                 data:
+ *                   type: number
+ *                   description: Siguiente número de orden disponible
+ *                   example: 1
+ *       400:
+ *         description: ID de sección inválido
+ *       404:
+ *         description: Sección no encontrada
+ */
+export const getNextLessonOrder = async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { sectionId } = req.params;
+
+    if (!mongoose.Types.ObjectId.isValid(sectionId)) {
+      return next(new ApiError(400, 'ID de sección no válido'));
+    }
+
+    // Verificar que la sección exista
+    const section = await Section.findById(sectionId);
+    if (!section) {
+      return next(new ApiError(404, 'Sección no encontrada'));
+    }
+
+    // Obtener la última lección de la sección ordenada por orden descendente
+    const lastLesson = await mongoose.model('Lesson').findOne(
+      { section: sectionId },
+      { order: 1 },
+      { sort: { order: -1 } }
+    );
+
+    // Calcular el siguiente orden
+    const nextOrder = (lastLesson?.order ?? 0) + 1;
+
+    res.status(200).json({
+      success: true,
+      data: nextOrder
+    });
+  } catch (error) {
+    console.error('Error al obtener el siguiente orden de lección:', error);
+    next(new ApiError(500, 'Error al obtener el siguiente orden de lección'));
+  }
+};
+
 export default {
   createSection,
   getSection,
   getSectionsByCourse,
   updateSection,
   deleteSection,
-  reorderSections
+  reorderSections,
+  getNextLessonOrder
 };

@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
 import { PlusIcon, PencilIcon, TrashIcon, GripVertical, BookOpenIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { SectionForm } from '@/components/forms/SectionForm';
 import { LessonForm } from '@/components/forms/LessonForm';
 import { Section, LessonInSection } from '@/types/section';
@@ -17,7 +17,6 @@ interface SectionFormValues {
   title: string;
   description?: string;
   isPublished: boolean;
-  order: number;
 }
 
 interface LessonFormValues {
@@ -27,7 +26,6 @@ interface LessonFormValues {
   isPublished: boolean;
   isPreview: boolean;
   videoUrl?: string;
-  order: number;
 }
 
 export default function CurriculumPage() {
@@ -42,7 +40,7 @@ export default function CurriculumPage() {
   useEffect(() => {
     const loadSections = async () => {
       try {
-        const data = await apiRequest<Section[]>(`/courses/${courseId}/sections`);
+        const data = await apiRequest<Section[]>(`/courses/${courseId}/sections?includeLessons=true`);
         setSections(Array.isArray(data) ? data : []);
       } catch (error) {
         console.error('Error cargando secciones:', error);
@@ -77,114 +75,76 @@ export default function CurriculumPage() {
     }
   }, [courseId]);
 
-  const handleAddSection = async (newSection: Omit<SectionFormValues, 'order'>) => {
+
+  const handleAddSection = useCallback(async (newSection: Omit<SectionFormValues, 'order'>) => {
+    console.log('=== Creando nueva sección ===');
+    console.log('Datos de la sección:', newSection);
+    
     try {
-      const createdSection = await apiRequest<Section>(
-        `/courses/${courseId}/sections`,
+      // Crear la sección
+      console.log('Enviando solicitud POST a /sections');
+      const response = await apiRequest<{ data: Section }>(
+        `courses/${courseId}/sections`,
         {
           method: 'POST',
-          body: JSON.stringify({
-            ...newSection,
-            course: courseId,
-            order: sections.length > 0 ? Math.max(...sections.map(s => s.order)) + 1 : 0
-          }),
+          body: JSON.stringify(newSection)
         }
       );
       
-      setSections(prevSections => [...prevSections, createdSection]);
+      console.log('Sección creada con éxito:', response.data);
+      
+      // Agregar la nueva sección al estado
+      setSections(prevSections => [...prevSections, response.data]);
+      
+      // Cerrar el diálogo
       setIsSectionDialogOpen(false);
-      toast.success('Sección creada exitosamente');
+      
+      // Mostrar mensaje de éxito
+      toast.success('Sección creada correctamente');
     } catch (error) {
       console.error('Error al crear la sección:', error);
-      toast.error(error instanceof Error ? error.message : 'Error al crear la sección');
+      const errorMessage = error instanceof Error ? error.message : 'Error al crear la sección';
+      toast.error(errorMessage);
+      throw error; // Re-lanzar el error para que pueda ser manejado por el formulario
     }
-  };
+  }, [courseId]); // Add dependency array with courseId
 
-  // Función para agregar una lección
-  // Función para agregar una lección
-  const handleAddLesson = async (newLesson: Omit<LessonFormValues, 'order' | 'isPublished' | 'isPreview'>) => {
+  const handleAddLesson = async (newLesson: Omit<LessonFormValues, 'sectionId'>) => {
     if (!selectedSection) return;
     
     try {
-      const section = sections.find(s => s._id === selectedSection);
-      if (!section) {
-        throw new Error('Sección no encontrada');
-      }
+      // Format the lesson data to match the backend expectations
+      const lessonData = {
+        title: newLesson.title,
+        description: newLesson.description || '',
+        duration: newLesson.duration || 0,
+        isPublished: newLesson.isPublished,
+        isPreview: newLesson.isPreview,
+        sectionId: selectedSection,
+        courseId,
+        // Convert the content into a contentBlocks array
+        contentBlocks: [
+          {
+            type: 'text',
+            content: newLesson.content || '',
+            order: 0
+          }
+        ]
+      };
 
-      const createdLesson = await apiRequest<LessonInSection>(`/sections/${selectedSection}/lessons`, {
-        method: 'POST',
-        body: JSON.stringify({
-          ...newLesson,
-          sectionId: selectedSection,
-          courseId: courseId,
-          isPublished: false,
-          isPreview: false,
-          order: section.lessons?.length || 0
-        }),
-      });
+      const createdLesson = await apiRequest<LessonInSection>(
+        `lessons`,
+        {
+          method: 'POST',
+          body: JSON.stringify(lessonData)
+        }
+      );
 
-      // Update the sections state to include the new lesson
+      // Actualizar la sección con la nueva lección
       setSections(prevSections => 
         prevSections.map(section => {
           if (section._id === selectedSection) {
             const updatedLessons = [...(section.lessons || []), createdLesson];
-            return {
-              ...section,
-              lessons: updatedLessons,
-              lessonCount: updatedLessons.length,
-              duration: updatedLessons.reduce((total, lesson) => total + (lesson.duration || 0), 0)
-            };
-          }
-          return section;
-        })
-      );
-
-      setIsLessonDialogOpen(false);
-      toast.success('Lección creada exitosamente');
-    } catch (error) {
-      console.error('Error al crear la lección:', error);
-      toast.error(error instanceof Error ? error.message : 'Error al crear la lección');
-    }
-  };
-
-  // Función para eliminar una lección
-  const handleDeleteSection = async (sectionId: string) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta sección? Esto también eliminará todas las lecciones que contiene.')) {
-      return;
-    }
-
-    try {
-      await apiRequest(`/sections/${sectionId}`, {
-        method: 'DELETE',
-      });
-
-      // Update local state to reflect the deletion
-      setSections(prevSections => 
-        prevSections.filter(section => section._id !== sectionId)
-      );
-
-      toast.success('Sección eliminada exitosamente');
-    } catch (error) {
-      console.error('Error al eliminar la sección:', error);
-      toast.error(error instanceof Error ? error.message : 'Error al eliminar la sección');
-    }
-  };
-
-  const handleDeleteLesson = async (sectionId: string, lessonId: string) => {
-    if (!confirm('¿Estás seguro de que deseas eliminar esta lección?')) {
-      return;
-    }
-
-    try {
-      await apiRequest(`/lessons/${lessonId}`, {
-        method: 'DELETE',
-      });
-
-      // Update local state to reflect the deletion
-      setSections(prevSections => 
-        prevSections.map(section => {
-          if (section._id === sectionId) {
-            const updatedLessons = section.lessons?.filter(lesson => lesson._id !== lessonId) || [];
             return {
               ...section,
               lessons: updatedLessons,
@@ -231,8 +191,7 @@ export default function CurriculumPage() {
             initialData={{
               title: '',
               description: '',
-              isPublished: false,
-              order: sections.length > 0 ? Math.max(...sections.map(s => s.order)) + 1 : 0
+              isPublished: false
             }}
           />
         </DialogContent>
@@ -296,13 +255,11 @@ export default function CurriculumPage() {
                       </Button>
                     </div>
                   </div>
-                  <CardDescription className="mt-1">
-                    {section.description && (
-                      <p className="text-sm text-muted-foreground">
-                        {section.description}
-                      </p>
-                    )}
-                  </CardDescription>
+                  {section.description && (
+                    <CardDescription className="mt-1 text-sm text-muted-foreground">
+                      {section.description}
+                    </CardDescription>
+                  )}
                 </CardHeader>
                 <CardContent className="p-0">
                   <div className="divide-y">
@@ -362,18 +319,26 @@ export default function CurriculumPage() {
 
       {/* Diálogo para agregar/editar lección */}
       <Dialog open={isLessonDialogOpen} onOpenChange={setIsLessonDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[500px] bg-white dark:bg-gray-900">
           <DialogHeader>
-            <DialogTitle>Nueva Lección</DialogTitle>
+            <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-white">
+              {selectedSection ? 'Editar Lección' : 'Nueva Lección'}
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-500 dark:text-gray-400">
+              {selectedSection ? 'Actualiza los detalles de la lección' : 'Completa los campos para crear una nueva lección'}
+            </DialogDescription>
           </DialogHeader>
-          <LessonForm 
-            sectionId={selectedSection?.toString() || ''}
-            onSuccess={handleAddLesson}
-            onCancel={() => {
-              setSelectedSection(null);
-              setIsLessonDialogOpen(false);
-            }}
-          />
+          <div className="py-4">
+            <LessonForm 
+              sectionId={selectedSection?.toString() || ''}
+              courseId={courseId}
+              onSuccess={handleAddLesson}
+              onCancel={() => {
+                setSelectedSection(null);
+                setIsLessonDialogOpen(false);
+              }}
+            />
+          </div>
         </DialogContent>
       </Dialog>
     </div>

@@ -1,7 +1,7 @@
 import { Document, Model, Types } from 'mongoose';
 
 // Types for lesson content
-export type ContentType = 'video' | 'text' | 'quiz' | 'assignment' | 'live' | 'download';
+export type ContentType = 'text' | 'video' | 'video_link' | 'pdf' | 'document' | 'quiz' | 'assignment' | 'live' | 'download';
 
 export type QuizQuestion = {
   question: string;
@@ -26,107 +26,73 @@ export type Assignment = {
   instructions: string;
   dueDate?: Date;
   points: number;
-  submissionType: 'text' | 'file' | 'both';
   allowedFileTypes?: string[];
   maxFileSize?: number; // in MB
 };
 
 export interface IResource {
-  id?: string;
+  title: string;
+  url: string;
+  type: 'document' | 'link' | 'file' | 'pdf' | 'video' | 'audio' | 'image';
+  description?: string;
+  fileSize?: number; // in bytes
+  mimeType?: string; // MIME type of the file
+  thumbnailUrl?: string; // For video/image previews
+  duration?: number; // For audio/video content in seconds
+}
+
+export interface IContentBlock {
+  type: ContentType;
+  content: string; // Could be text content, video URL, or file path
+  title?: string;
+  description?: string;
+  duration?: number; // in minutes, for video content
+  thumbnailUrl?: string; // For video previews
+  fileSize?: number; // in bytes, for file uploads
+  fileType?: string; // MIME type of the file
+  order: number; // To maintain the order of content blocks
+}
+
+export interface ILessonBase extends Document {
+  // Mongoose document properties
+  _id: Types.ObjectId;
+  id: string;
+  __v?: number;
+  
+  // Your custom properties
   title: string;
   description?: string;
-  url: string;
-  type: 'pdf' | 'doc' | 'ppt' | 'zip' | 'image' | 'audio' | 'video' | 'other';
-  size?: number; // in bytes
-  duration?: number; // in seconds, for media files
-  isDownloadable: boolean;
-  isPreview: boolean;
-  order: number;
-}
-
-export interface ILessonMethods {
-  // Lesson completion
-  markAsCompleted(userId: Types.ObjectId | string): Promise<boolean>;
-  isCompletedByUser(userId: Types.ObjectId | string): Promise<boolean>;
-  
-  // Progress tracking
-  getProgress(userId: Types.ObjectId | string): Promise<number>;
-  
-  // Resource management
-  addResource(resource: Omit<IResource, 'id'>): Promise<IResource>;
-  removeResource(resourceId: string): Promise<boolean>;
-  
-  // Content management
-  updateContent(content: string, contentType: ContentType): Promise<boolean>;
-  
-  // Quiz methods
-  submitQuizAnswers(userId: Types.ObjectId | string, answers: number[]): Promise<{
-    score: number;
-    passed: boolean;
-    correctAnswers: number[];
-  }>;
-}
-
-export interface ILesson extends Document, ILessonMethods {
-  // Basic Information
-  title: string;
-  subtitle?: string;
-  description: string;
-  content: string;
-  contentType: ContentType;
-  
-  // Media
-  videoUrl?: string;
-  thumbnailUrl?: string;
-  duration: number; // in minutes
-  
-  // Course Relationship
-  course: Types.ObjectId;
-  section?: Types.ObjectId; // For grouping lessons into sections
-  
-  // Content
+  contentBlocks: IContentBlock[];
+  duration: number;
   resources: IResource[];
-  quiz?: Quiz;
-  assignment?: Assignment;
-  
-  // Metadata
-  order: number;
+  course: Types.ObjectId;
+  section: Types.ObjectId;
   isFree: boolean;
   isPublished: boolean;
-  isPreview: boolean; // Can be viewed without enrollment
-  requiresCompletion: boolean; // If true, must complete before next lesson
-  
-  // Prerequisites
-  prerequisites: Types.ObjectId[]; // Lessons that must be completed first
-  
-  // Statistics
+  isPreview: boolean;
+  requiresCompletion: boolean;
+  prerequisites: Types.ObjectId[];
   viewCount: number;
   completionCount: number;
-  
-  // Timestamps
   publishedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
   
   // Virtuals
-  readonly id: string;
-  readonly nextLesson?: Types.ObjectId;
-  readonly previousLesson?: Types.ObjectId;
-  
-  // Methods from ILessonMethods are included via extension
+  nextLesson?: Types.ObjectId;
+  previousLesson?: Types.ObjectId;
 }
 
-export interface ILessonModel extends Model<ILesson, {}, ILessonMethods> {
-  // Static Methods
-  findByCourse(courseId: Types.ObjectId | string): Promise<ILesson[]>;
-  findBySection(sectionId: Types.ObjectId | string): Promise<ILesson[]>;
-  getCourseProgress(courseId: Types.ObjectId | string, userId: Types.ObjectId | string): Promise<number>;
-  reorderLessons(courseId: Types.ObjectId | string, newOrder: string[]): Promise<boolean>;
-  
-  // Analytics
-  getPopularLessons(limit?: number): Promise<ILesson[]>;
-  getMostEngagingLessons(courseId: Types.ObjectId | string): Promise<ILesson[]>;
+export interface ILessonMethods {
+  // Add any document methods here
+  markAsCompleted(userId: Types.ObjectId | string): Promise<boolean>;
+  isCompletedByUser(userId: Types.ObjectId | string): Promise<boolean>;
+  getCompletionPercentage(userId: Types.ObjectId | string): Promise<number>;
+  addResource(resource: Omit<IResource, 'id'>): Promise<IResource>;
+  removeResource(resourceId: string): Promise<boolean>;
 }
+
+export type ILesson = ILessonBase & ILessonMethods;
 
 // Input Types for API
 export type CreateLessonInput = Omit<

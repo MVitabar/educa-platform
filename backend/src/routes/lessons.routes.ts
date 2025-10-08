@@ -1,32 +1,40 @@
 import { Router } from 'express';
-import * as lessonController from '../controllers/lessons.controller';
 import { protect, restrictTo } from '../middlewares/auth.middleware';
+import lessonsController from '../controllers/lessons.controller';
 
-const router = Router();
+// Create a new router with mergeParams to handle parameters from parent routes
+const router = Router({ mergeParams: true });
 
 // Apply authentication to all routes
 router.use(protect);
 
 // Get all lessons in a section
-router.get('/courses/:courseId/sections/:sectionId/lessons', lessonController.getLessonsBySection);
+router.get('/', lessonsController.getLessonsBySection);
 
 // Create a new lesson in a section (instructor only)
 router.post(
-  '/courses/:courseId/sections/:sectionId/lessons',
+  '/',
   restrictTo('instructor'),
-  lessonController.createLesson
+  lessonsController.createLesson
+);
+
+// Reorder lessons (instructor only)
+router.patch(
+  '/reorder',
+  restrictTo('instructor'),
+  lessonsController.reorderLessons
 );
 
 // Get a specific lesson
-router.get('/courses/:courseId/sections/:sectionId/lessons/:id', lessonController.getLesson);
+router.get('/:id', lessonsController.getLesson);
+
+// Get all lessons in a course
+router.get('/course/:courseId', lessonsController.getLessonsByCourse);
 
 // Update or delete a lesson (instructor only)
 router
-  .route('/courses/:courseId/sections/:sectionId/lessons/:id')
-  .put(restrictTo('instructor'), lessonController.updateLesson)
-  .delete(restrictTo('instructor'), lessonController.deleteLesson);
-
-// Get all lessons for a course (public)
-router.get('/courses/:courseId/lessons', lessonController.getLessonsByCourse);
+  .route('/:id')
+  .put(restrictTo('instructor'), lessonsController.updateLesson)
+  .delete(restrictTo('instructor'), lessonsController.deleteLesson);
 
 export default router;

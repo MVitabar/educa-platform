@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
-import { Types } from 'mongoose';
+import mongoose, { Types } from 'mongoose';
 import { Lesson } from '../models/lesson.model';
+import { Section } from '../models/section.model';
 import { ApiError } from '../utils/apiError';
 import { IUser } from '../types/user.types';
 
@@ -210,6 +211,44 @@ interface IAuthenticatedRequest extends Request {
 
 /**
  * @swagger
+ * components:
+ *   schemas:
+ *     ContentBlock:
+ *       type: object
+ *       required:
+ *         - type
+ *         - content
+ *         - order
+ *       properties:
+ *         type:
+ *           type: string
+ *           enum: [text, video, video_link, pdf, document]
+ *           description: Tipo de bloque de contenido
+ *         content:
+ *           type: string
+ *           description: Contenido del bloque (texto, URL, etc.)
+ *         title:
+ *           type: string
+ *           description: Título opcional para el bloque
+ *         description:
+ *           type: string
+ *           description: Descripción opcional para el bloque
+ *         duration:
+ *           type: number
+ *           description: Duración en minutos (para videos)
+ *         thumbnailUrl:
+ *           type: string
+ *           description: URL de la miniatura (para videos)
+ *         fileSize:
+ *           type: number
+ *           description: Tamaño del archivo en bytes (para archivos subidos)
+ *         fileType:
+ *           type: string
+ *           description: Tipo MIME del archivo (para archivos subidos)
+ *         order:
+ *           type: number
+ *           description: Orden del bloque en la lección
+ * 
  * /api/v1/courses/{courseId}/sections/{sectionId}/lessons:
  *   post:
  *     summary: Crear una nueva lección en una sección (instructor/admin)
@@ -234,7 +273,39 @@ interface IAuthenticatedRequest extends Request {
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CreateLessonInput'
+ *             type: object
+ *             required:
+ *               - title
+ *               - contentBlocks
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 minLength: 1
+ *                 maxLength: 200
+ *               description:
+ *                 type: string
+ *               contentBlocks:
+ *                 type: array
+ *                 minItems: 1
+ *                 items:
+ *                   $ref: '#/components/schemas/ContentBlock'
+ *               duration:
+ *                 type: number
+ *                 minimum: 0
+ *                 default: 0
+ *               resources:
+ *                 type: array
+ *                 items:
+ *                   $ref: '#/components/schemas/Resource'
+ *               isPublished:
+ *                 type: boolean
+ *                 default: false
+ *               isFree:
+ *                 type: boolean
+ *                 default: false
+ *               isPreview:
+ *                 type: boolean
+ *                 default: false
  *     responses:
  *       201:
  *         description: Lección creada exitosamente
@@ -254,36 +325,147 @@ interface IAuthenticatedRequest extends Request {
  *       403:
  *         $ref: '#/components/responses/ForbiddenError'
  */
-export const createLesson = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
+export const createLesson = async (req: IAuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
   try {
-    const { courseId, sectionId } = req.params;
+    // Get courseId and sectionId from either request body or URL params
+    const { courseId: bodyCourseId, sectionId: bodySectionId, ...restBody } = req.body;
+    const { courseId: paramCourseId, sectionId: paramSectionId } = req.params;
+
+    // Use values from body if available, otherwise fall back to URL params
+    const courseId = bodyCourseId || paramCourseId;
+    const sectionId = bodySectionId || paramSectionId;
     
-    // Verificar que el usuario es instructor o admin
+    // Verify required parameters are present
+    if (!courseId || !sectionId) {
+      return next(new ApiError(400, 'Faltan parámetros requeridos (courseId y sectionId). Deben estar en el cuerpo de la solicitud o en la URL.'));
+    }
+    
+    // Verify user is instructor or admin
     if (!req.user || (req.user.role !== 'instructor' && req.user.role !== 'admin')) {
       return next(new ApiError(403, 'Solo los instructores pueden crear lecciones'));
     }
 
-    // Verificar que la sección pertenece al curso
-    // Aquí podrías agregar una verificación adicional si es necesario
+    // Extract remaining fields from request body
+    const {
+      title,
+      description,
+      contentBlocks = [],
+      duration = 0,
+      resources = [],
+      isPublished = false,
+      isFree = false,
+      isPreview = false
+    } = restBody;
+
+    // Solo validar courseId como ObjectId, ya que sectionId es personalizado
+    if (!Types.ObjectId.isValid(courseId)) {
+      return next(new ApiError(400, 'ID de curso no válido'));
+    }
+
+    // Verificar que la sección exista y pertenezca al curso
+    const section = await Section.findOne({ 
+      _id: sectionId,
+      course: courseId
+    });
     
-    // Crear la lección con los IDs de curso y sección
+    if (!section) {
+      return next(new ApiError(404, 'Sección no encontrada o no pertenece al curso especificado'));
+    }
+
+    // Validar los bloques de contenido
+    if (!Array.isArray(contentBlocks) || contentBlocks.length === 0) {
+      return next(new ApiError(400, 'La lección debe contener al menos un bloque de contenido'));
+    }
+
+    // Validar cada bloque de contenido
+    for (const [index, block] of contentBlocks.entries()) {
+      if (!block.type || !block.content) {
+        return next(new ApiError(400, `El bloque ${index + 1} debe tener tipo y contenido`));
+      }
+      
+      // Validar el tipo de contenido
+      const validTypes = ['text', 'video', 'video_link', 'pdf', 'document'];
+      if (!validTypes.includes(block.type)) {
+        return next(new ApiError(400, `Tipo de bloque no válido: ${block.type}`));
+      }
+      
+      // Validar que los campos requeridos estén presentes según el tipo
+      if (block.type === 'video' || block.type === 'video_link') {
+        try {
+          new URL(block.content);
+        } catch (e) {
+          return next(new ApiError(400, `La URL del video no es válida en el bloque ${index + 1}`));
+        }
+      }
+    }
+
+    // Calcular la duración total si no se proporciona
+    let totalDuration = duration;
+    if (!totalDuration) {
+      totalDuration = contentBlocks.reduce((sum: number, block: any) => {
+        return sum + (block.duration || 0);
+      }, 0);
+      // Mínimo 1 minuto de duración
+      totalDuration = Math.max(1, totalDuration);
+    }
+
     const lessonData = {
-      ...req.body,
-      course: courseId,
+      title: title.trim(),
+      description: description?.trim(),
+      contentBlocks: contentBlocks.map((block: any, index: number) => ({
+        type: block.type,
+        content: block.content,
+        title: block.title?.trim(),
+        description: block.description?.trim(),
+        duration: block.duration || 0,
+        thumbnailUrl: block.thumbnailUrl,
+        fileSize: block.fileSize,
+        fileType: block.fileType,
+        order: block.order !== undefined ? block.order : index
+      })),
+      duration: totalDuration,
+      resources: resources.map((resource: any) => ({
+        title: resource.title.trim(),
+        url: resource.url,
+        type: resource.type,
+        description: resource.description?.trim(),
+        fileSize: resource.fileSize,
+        mimeType: resource.mimeType,
+        thumbnailUrl: resource.thumbnailUrl,
+        duration: resource.duration
+      })),
+      course: new Types.ObjectId(courseId),
       section: sectionId,
-      createdBy: req.user._id
+      isPublished,
+      isFree,
+      isPreview,
+      createdBy: req.user._id,
+      viewCount: 0,
+      completionCount: 0,
+      requiresCompletion: true,
+      prerequisites: []
     };
 
-    const lesson = await Lesson.create(lessonData);
+    const lesson = new Lesson(lessonData);
+    await lesson.save();
+
+    // Actualizar el contador de lecciones en la sección
+    await Section.findByIdAndUpdate(
+      sectionId,
+      { $inc: { lessonCount: 1 } },
+      { new: true }
+    );
 
     res.status(201).json({
       success: true,
-      data: lesson
+      data: lesson,
     });
   } catch (error: any) {
-    next(new ApiError(400, `Error al crear la lección: ${error.message}`));
+    console.error('Error creating lesson:', error);
+    next(new ApiError(500, `Error al crear la lección: ${error.message}`));
   }
 };
+
 
 /**
  * @swagger
@@ -797,17 +979,119 @@ export const deleteLesson = async (req: IAuthenticatedRequest, res: Response, ne
       data: lessons
     });
   } catch (error) {
-    next(error);
+    next(new ApiError(500, 'Error al obtener las lecciones'));
   }
 };
 
-// Export all controller functions
+/**
+ * @swagger
+ * /api/v1/courses/{courseId}/sections/{sectionId}/lessons/reorder:
+ *   patch:
+ *     summary: Reordenar lecciones en una sección
+ *     tags: [Lessons]
+ *     security:
+ *       - bearerAuth: []
+ *     parameters:
+ *       - in: path
+ *         name: courseId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID del curso
+ *       - in: path
+ *         name: sectionId
+ *         required: true
+ *         schema:
+ *           type: string
+ *         description: ID de la sección
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             required: [lessonIds]
+ *             properties:
+ *               lessonIds:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Array de IDs de lecciones en el nuevo orden
+ *     responses:
+ *       200:
+ *         description: Orden de lecciones actualizado correctamente
+ *       400:
+ *         description: Datos de entrada inválidos
+ *       401:
+ *         description: No autorizado
+ *       403:
+ *         description: No tienes permiso para realizar esta acción
+ *       404:
+ *         description: Sección o lección no encontrada
+ */
+const reorderLessons = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
+  const session = await mongoose.startSession();
+  session.startTransaction();
+  
+  try {
+    const { courseId, sectionId } = req.params;
+    const { lessonIds } = req.body;
+
+    if (!Array.isArray(lessonIds) || lessonIds.length === 0) {
+      await session.abortTransaction();
+      session.endSession();
+      return next(new ApiError(400, 'Se requiere un array de IDs de lecciones'));
+    }
+
+    // Verificar que todas las lecciones pertenecen a la sección y al curso
+    const lessons = await Lesson.find({
+      _id: { $in: lessonIds },
+      section: sectionId,
+      course: courseId
+    }).session(session);
+
+    if (lessons.length !== lessonIds.length) {
+      await session.abortTransaction();
+      session.endSession();
+      return next(new ApiError(404, 'Una o más lecciones no fueron encontradas'));
+    }
+
+    // Actualizar el orden de las lecciones
+    const bulkOps = lessonIds.map((id, index) => ({
+      updateOne: {
+        filter: { _id: id },
+        update: { $set: { order: index } }
+      }
+    }));
+
+    await Lesson.bulkWrite(bulkOps, { session });
+    
+    await session.commitTransaction();
+    session.endSession();
+
+    res.status(200).json({
+      success: true,
+      message: 'Orden de lecciones actualizado correctamente'
+    });
+  } catch (error: any) {
+    await session.abortTransaction();
+    session.endSession();
+    
+    if (error.name === 'CastError') {
+      return next(new ApiError(400, 'ID de curso, sección o lección inválido'));
+    }
+    next(new ApiError(500, `Error al reordenar las lecciones: ${error.message}`));
+  }
+};
+
+// Export all controller methods
 export default {
   createLesson,
   getLesson,
-  getLessons,
   getLessonsByCourse,
   getLessonsBySection,
   updateLesson,
-  deleteLesson
+  deleteLesson,
+  getLessons,
+  reorderLessons
 };

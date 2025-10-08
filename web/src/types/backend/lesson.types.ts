@@ -41,7 +41,6 @@ export interface IResource {
   duration?: number; // in seconds, for media files
   isDownloadable: boolean;
   isPreview: boolean;
-  order: number;
 }
 
 export interface ILessonMethods {
@@ -90,7 +89,6 @@ export interface ILesson extends Document, ILessonMethods {
   assignment?: Assignment;
   
   // Metadata
-  order: number;
   isFree: boolean;
   isPublished: boolean;
   isPreview: boolean; // Can be viewed without enrollment
@@ -116,12 +114,11 @@ export interface ILesson extends Document, ILessonMethods {
   // Methods from ILessonMethods are included via extension
 }
 
-export interface ILessonModel extends Model<ILesson, {}, ILessonMethods> {
+export interface ILessonModel extends Model<ILesson, object, ILessonMethods> {
   // Static Methods
   findByCourse(courseId: Types.ObjectId | string): Promise<ILesson[]>;
   findBySection(sectionId: Types.ObjectId | string): Promise<ILesson[]>;
   getCourseProgress(courseId: Types.ObjectId | string, userId: Types.ObjectId | string): Promise<number>;
-  reorderLessons(courseId: Types.ObjectId | string, newOrder: string[]): Promise<boolean>;
   
   // Analytics
   getPopularLessons(limit?: number): Promise<ILesson[]>;
