@@ -1,9 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon, BookOpenIcon, GripVertical } from 'lucide-react';
+import { PlusIcon, PencilIcon, TrashIcon, BookOpenIcon, GripVertical, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -34,11 +34,16 @@ interface ErrorWithResponse extends Error {
 
 export default function CurriculumPage() {
   const { id: courseId } = useParams<{ id: string }>();
+  const router = useRouter();
   const [sections, setSections] = useState<Section[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSectionDialogOpen, setIsSectionDialogOpen] = useState(false);
   const [isLessonDialogOpen, setIsLessonDialogOpen] = useState(false);
   const [selectedSection, setSelectedSection] = useState<string | null>(null);
+  
+  const handleSectionClick = (sectionId: string) => {
+    router.push(`/instructor/courses/${courseId}/sections/${sectionId}`);
+  };
 
   // Cargar secciones del curso
   useEffect(() => {
@@ -346,17 +351,28 @@ export default function CurriculumPage() {
         ) : (
           <div className="space-y-6">
             {sections.map((section) => (
-              <Card key={section._id.toString()}>
+              <Card 
+                key={section._id.toString()}
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => handleSectionClick(section._id.toString())}
+              >
                 <CardHeader className="space-y-2">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center space-x-2">
                       <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
-                      <CardTitle className="text-lg">{section.title}</CardTitle>
-                      {!section.isPublished && (
-                        <Badge variant="outline" className="text-xs">
-                          Borrador
-                        </Badge>
-                      )}
+                      <div>
+                        <div className="flex items-center space-x-2">
+                          <CardTitle className="text-lg">{section.title}</CardTitle>
+                          {!section.isPublished && (
+                            <Badge variant="outline" className="text-xs">
+                              Borrador
+                            </Badge>
+                          )}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          {section.lessons?.length || 0} {section.lessons?.length === 1 ? 'lección' : 'lecciones'}
+                        </div>
+                      </div>
                     </div>
                     <div className="flex items-center space-x-2">
                       <Button
@@ -388,54 +404,26 @@ export default function CurriculumPage() {
                     </CardDescription>
                   )}
                 </CardHeader>
-                <CardContent className="p-0">
-                  <div className="divide-y">
-                    {!section.lessons || section.lessons.length === 0 ? (
-                      <div className="p-4 text-center text-sm text-muted-foreground">
-                        No hay lecciones en esta sección
-                      </div>
-                    ) : (
-                      section.lessons.map((lesson) => (
-                        <div
-                          key={lesson._id.toString()}
-                          className="flex items-center justify-between p-4 hover:bg-muted/50 transition-colors"
-                        >
-                          <div className="flex items-center space-x-3">
-                            <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
-                            <div>
-                              <div className="flex items-center space-x-2">
-                                <span className="font-medium">{lesson.title}</span>
-                                {lesson.isPreview && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Vista Previa
-                                  </Badge>
-                                )}
-                                {!lesson.isPublished && (
-                                  <Badge variant="outline" className="text-xs">
-                                    Borrador
-                                  </Badge>
-                                )}
-                              </div>
-                              <div className="text-xs text-muted-foreground">
-                                {lesson.duration} min • Lección
-                              </div>
-                            </div>
-                          </div>
-                          <div className="flex items-center space-x-2">
-                            <Button variant="ghost" size="sm">
-                              <PencilIcon className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteLesson(section._id, lesson._id)}
-                            >
-                              <TrashIcon className="h-4 w-4 text-destructive" />
-                            </Button>
-                          </div>
-                        </div>
-                      ))
-                    )}
+                <CardContent className="p-4 pt-0">
+                  <div className="flex items-center justify-between text-sm">
+                    <div className="text-muted-foreground">
+                      {section.lessons?.length || 0} {section.lessons?.length === 1 ? 'lección' : 'lecciones'}
+                    </div>
+                    <div className="flex items-center space-x-2">
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedSection(section._id);
+                          setIsLessonDialogOpen(true);
+                        }}
+                      >
+                        <PlusIcon className="h-4 w-4 mr-2" />
+                        Agregar lección
+                      </Button>
+                      <ChevronRight className="h-5 w-5 text-muted-foreground" />
+                    </div>
                   </div>
                 </CardContent>
               </Card>
@@ -443,6 +431,30 @@ export default function CurriculumPage() {
           </div>
         )}
       </div>
+
+      {/* Diálogo para agregar/editar sección */}
+      <Dialog open={isSectionDialogOpen} onOpenChange={setIsSectionDialogOpen}>
+        <DialogContent className="sm:max-w-[500px] bg-white dark:bg-gray-900">
+          <DialogHeader>
+            <DialogTitle className="text-xl font-semibold text-gray-900 dark:text-white">
+              Nueva Sección
+            </DialogTitle>
+            <DialogDescription className="text-sm text-gray-500 dark:text-gray-400">
+              Agrega una nueva sección para organizar tus lecciones
+            </DialogDescription>
+          </DialogHeader>
+          <div className="py-4">
+            <SectionForm
+              courseId={courseId}
+              onSuccess={(newSection) => {
+                handleAddSection(newSection);
+                setIsSectionDialogOpen(false);
+              }}
+              onCancel={() => setIsSectionDialogOpen(false)}
+            />
+          </div>
+        </DialogContent>
+      </Dialog>
 
       {/* Diálogo para agregar/editar lección */}
       <Dialog open={isLessonDialogOpen} onOpenChange={setIsLessonDialogOpen}>
