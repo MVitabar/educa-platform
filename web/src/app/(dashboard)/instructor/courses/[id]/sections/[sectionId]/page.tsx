@@ -9,7 +9,9 @@ import {
   TrashIcon,
   ArrowLeft,
   GripVertical,
+  PlayCircle,
 } from "lucide-react";
+import { getYoutubeThumbnail, isYoutubeUrl } from "@/lib/videoUtils";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import {
@@ -23,6 +25,7 @@ import { LessonForm } from "@/components/forms/LessonForm";
 import { LessonFormValues } from "@/types/lesson";
 import { Section, LessonInSection } from "@/types/section";
 import { apiRequest } from "@/lib/api";
+import Image from "next/image";
 
 export default function SectionLessonsPage() {
   const router = useRouter();
@@ -103,19 +106,51 @@ export default function SectionLessonsPage() {
     try {
       const cleanSectionId = getCleanSectionId(sectionId);
       
+      // Prepare content blocks
+      const contentBlocks = [];
+      
+      // Add title as first content block if it doesn't exist
+      if (!formData.contentBlocks?.some(block => block.type === 'text')) {
+        contentBlocks.push({
+          type: 'text',
+          content: formData.title || 'Nueva lección',
+          order: 0
+        });
+      } else {
+        contentBlocks.push(...(formData.contentBlocks || []));
+      }
+      
+      // Add video block if videoUrl exists
+      if (formData.videoUrl) {
+        // Check if there's already a video block to update or add new one
+        const videoBlockIndex = contentBlocks.findIndex(block => block.type === 'video_link');
+        
+        if (videoBlockIndex >= 0) {
+          // Update existing video block
+          contentBlocks[videoBlockIndex] = {
+            ...contentBlocks[videoBlockIndex],
+            content: formData.videoUrl,
+            title: `Video: ${formData.title || 'Nuevo video'}`,
+            duration: formData.duration || 0
+          };
+        } else {
+          // Add new video block
+          contentBlocks.push({
+            type: 'video_link',
+            content: formData.videoUrl,
+            title: `Video: ${formData.title || 'Nuevo video'}`,
+            duration: formData.duration || 0,
+            order: contentBlocks.length
+          });
+        }
+      }
+      
       // Transform form data to match the expected API format
       const lessonData = {
         ...formData,
         sectionId: cleanSectionId,
         courseId,
-        // Ensure contentBlocks is properly formatted
-        contentBlocks: formData.contentBlocks?.length 
-          ? formData.contentBlocks 
-          : [{
-              type: 'text',
-              content: formData.title || 'Nueva lección',
-              order: 0
-            }]
+        contentBlocks
       };
   
       console.log('Creating lesson with data:', {
@@ -310,42 +345,86 @@ export default function SectionLessonsPage() {
             {lessons.map((lesson: LessonInSection) => (
               <Card
                 key={lesson._id}
-                className="hover:shadow-md transition-shadow"
+                className="hover:shadow-md transition-shadow overflow-hidden"
               >
-                <CardContent className="p-4">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center space-x-4">
-                      <GripVertical className="h-5 w-5 text-muted-foreground cursor-move" />
-                      <h3 className="font-medium">
-                        {lesson.contentBlocks?.[0]?.content}
-                      </h3>
-                      <p className="text-sm text-muted-foreground">
-                        {lesson.duration
-                          ? `${Math.ceil(lesson.duration)} min`
-                          : "Sin duración"}
-                      </p>
-                    </div>
-                    <div className="flex items-center space-x-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => {
-                          setSelectedLesson(lesson);
-                          setIsLessonDialogOpen(true);
-                        }}
-                      >
-                        <PencilIcon className="h-4 w-4" />
-                        <span className="sr-only">Editar</span>
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteLesson(lesson._id)}
-                        className="text-destructive hover:text-destructive"
-                      >
-                        <TrashIcon className="h-4 w-4" />
-                        <span className="sr-only">Eliminar</span>
-                      </Button>
+                <CardContent className="p-0">
+                  <div className="flex">
+                    {/* Thumbnail section */}
+                    {(() => {
+                      // Buscar el bloque de contenido que sea un video
+                      const videoBlock = lesson.contentBlocks?.find(block => block.type === 'video_link');
+                      const videoUrl = videoBlock?.content;
+                      
+                      if (!videoUrl || !isYoutubeUrl(videoUrl)) {
+                        return (
+                          <div className="w-40 h-24 flex-shrink-0 bg-gray-100 dark:bg-gray-800 flex items-center justify-center">
+                            <PlayCircle className="h-8 w-8 text-gray-400" />
+                          </div>
+                        );
+                      }
+                      
+                      const thumbnailUrl = getYoutubeThumbnail(videoUrl);
+                      
+                      return (
+                        <div className="w-40 h-24 flex-shrink-0 bg-gray-100 dark:bg-gray-800 overflow-hidden">
+                          {thumbnailUrl && (
+                            <Image
+                              src={thumbnailUrl}
+                              alt="Miniatura del video"
+                              width={160}
+                              height={96}
+                              className="w-full h-full object-cover"
+                              unoptimized={true} // Add this to allow loading from external domains
+                            />
+                          )}
+                        </div>
+                      );
+                    })()}
+                    
+                    <div className="flex-1 p-4 flex items-center justify-between">
+                      <div className="flex items-center space-x-4">
+                        <GripVertical className="h-5 w-5 text-muted-foreground cursor-move flex-shrink-0" />
+                        <div>
+                          <h3 className="font-medium">
+                            {lesson.contentBlocks?.[0]?.content || 'Lección sin título'}
+                          </h3>
+                          {lesson.description && (
+                            <p className="text-sm text-muted-foreground line-clamp-1">
+                              {lesson.description}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-4">
+                        <p className="text-sm text-muted-foreground whitespace-nowrap">
+                          {lesson.duration
+                            ? `${Math.ceil(lesson.duration)} min`
+                            : "Sin duración"}
+                        </p>
+                        <div className="flex items-center space-x-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => {
+                              setSelectedLesson(lesson);
+                              setIsLessonDialogOpen(true);
+                            }}
+                            className="h-8 w-8"
+                          >
+                            <PencilIcon className="h-4 w-4" />
+                            <span className="sr-only">Editar</span>
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDeleteLesson(lesson._id)}
+                            className="h-8 w-8 text-destructive hover:text-destructive"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                            <span className="sr-only">Eliminar</span>
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </CardContent>
@@ -355,58 +434,35 @@ export default function SectionLessonsPage() {
         )}
       </div>
 
-      {/* Diálogo para agregar/editar lección */}
       <Dialog open={isLessonDialogOpen} onOpenChange={setIsLessonDialogOpen}>
-        <DialogContent>
+        <DialogContent className="sm:max-w-[600px]">
           <DialogHeader>
             <DialogTitle>
-              {selectedLesson ? "Editar lección" : "Crear nueva lección"}
+              {selectedLesson ? "Editar lección" : "Agregar nueva lección"}
             </DialogTitle>
             <DialogDescription>
-              Completa los detalles de la lección
+              {selectedLesson
+                ? "Modifica los datos de la lección"
+                : "Completa los datos para crear una nueva lección"}
             </DialogDescription>
           </DialogHeader>
           <LessonForm
-            initialData={
-              selectedLesson ||
-              ({
-                title: "",
-                description: "",
-                content: "", // Keep content for backward compatibility
-                duration: 0,
-                isPublished: false,
-                isPreview: false,
-                sectionId,
-                videoUrl: "",
-                contentBlocks: [
-                  {
-                    _id: `temp-${Math.random().toString(36).substr(2, 9)}`,
-                    type: "text",
-                    content: "",
-                    order: 0,
-                    duration: 0,
-                  },
-                ],
-              } as unknown as LessonFormValues) // Temporary type assertion
-            }
-            sectionId={sectionId}
-            courseId={courseId}
-            onSuccess={(data) => {
-              const formData = {
-                ...data,
-                contentBlocks: data.contentBlocks || [{
-                  type: 'text',
-                  content: data.title || 'Nueva lección',
-                  order: 0
-                }]
-              };
-              
-              if (selectedLesson) {
-                handleUpdateLesson(formData);
-              } else {
-                handleAddLesson(formData);
+            initialData={selectedLesson ? { ...selectedLesson, _id: selectedLesson._id } : undefined}
+            onSuccess={async (data) => {
+              try {
+                if (selectedLesson) {
+                  await handleUpdateLesson(data);
+                } else {
+                  await handleAddLesson(data);
+                }
+                setIsLessonDialogOpen(false);
+              } catch (error) {
+                console.error('Error saving lesson:', error);
               }
             }}
+            onCancel={() => setIsLessonDialogOpen(false)}
+            sectionId={sectionId}
+            courseId={courseId}
           />
         </DialogContent>
       </Dialog>
