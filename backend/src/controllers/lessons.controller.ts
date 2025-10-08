@@ -786,23 +786,50 @@ export const updateLesson = async (req: IAuthenticatedRequest, res: Response, ne
  *       404:
  *         description: Lección no encontrada o no pertenece a la sección/curso especificados
  */
+import { parseLessonId } from '../utils/idUtils';
+
 export const deleteLesson = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
     const { id } = req.params;
+    console.log('Received delete request for lesson ID:', id);
 
-    if (!Types.ObjectId.isValid(id)) {
-      return next(new ApiError(400, 'ID de lección inválido'));
+    // Verificar que el usuario es admin o instructor
+    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'instructor')) {
+      return next(new ApiError(403, 'No tienes permiso para eliminar esta lección'));
     }
 
-    const lesson = await Lesson.findByIdAndDelete(id);
+    // Since the lesson ID in the database is the full composite ID, we'll use it directly
+    const lessonId = id;
+    console.log('Using lesson ID for deletion:', lessonId);
+
+    // Find the lesson by its composite ID
+    const lesson = await Lesson.findById(lessonId);
+    console.log('Found lesson to delete:', lesson);
 
     if (!lesson) {
+      console.error('Lesson not found with ID:', lessonId);
+      // Log all lesson IDs for debugging
+      const allLessons = await Lesson.find({}, '_id');
+      console.log('Available lesson IDs:', allLessons.map((l: any) => l._id));
       return next(new ApiError(404, 'Lección no encontrada'));
     }
 
-    // Verificar que el usuario es admin o instructor del curso
-    if (!req.user || (req.user.role !== 'admin' && req.user.role !== 'instructor')) {
-      return next(new ApiError(403, 'No tienes permiso para eliminar esta lección'));
+    // If we get here, the lesson exists, so delete it
+    await Lesson.findByIdAndDelete(lessonId);
+
+    // Si la lección tenía una sección, actualizar la duración de la sección
+    if (lesson.section) {
+      await Section.findByIdAndUpdate(
+        lesson.section,
+        { 
+          $pull: { lessons: lesson._id },
+          $inc: { 
+            duration: -lesson.duration,
+            lessonCount: -1
+          }
+        },
+        { new: true }
+      );
     }
 
     res.status(200).json({

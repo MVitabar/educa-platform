@@ -59,7 +59,6 @@ export interface LessonFormValues {
   content: string;
   duration: number;
   videoUrl?: string;
-  order: number;
   isPreview: boolean;
   isPublished: boolean;
   sectionId: string;

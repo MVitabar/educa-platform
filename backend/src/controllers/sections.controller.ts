@@ -493,10 +493,13 @@ export const updateSection = async (req: IAuthenticatedRequest, res: Response, n
  */
 export const deleteSection = async (req: IAuthenticatedRequest, res: Response, next: NextFunction) => {
   try {
-    const section = await Section.findById(req.params.id);
+    const { sectionId, courseId } = req.params;
+    
+    // Find the section by ID and ensure it belongs to the specified course
+    const section = await Section.findOne({ _id: sectionId, course: courseId });
     
     if (!section) {
-      return next(new ApiError(404, 'Sección no encontrada'));
+      return next(new ApiError(404, 'Sección no encontrada o no pertenece al curso especificado'));
     }
 
     // Verificar que el usuario es admin o instructor del curso

@@ -2,6 +2,7 @@ import { getAccessToken } from '@/lib/auth';
 import { Section, SectionFormValues } from '@/types/section';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api/v1';
+console.log('API URL:', API_URL); // Debug log
 
 interface ApiResponse<T> {
   success: boolean;
@@ -14,39 +15,74 @@ const apiRequest = async <T>(
   url: string, 
   options: RequestInit = {}
 ): Promise<T> => {
+  console.group(`=== API Request: ${options.method || 'GET'} ${url} ===`);
+  
   try {
+    console.log('Fetching access token...');
     const token = await getAccessToken();
     
     if (!token) {
-      throw new Error('No se encontró el token de autenticación. Por favor, inicia sesión nuevamente.');
+      const error = new Error('No se encontró el token de autenticación. Por favor, inicia sesión nuevamente.');
+      console.error('Authentication error:', error.message);
+      throw error;
     }
     
-    const response = await fetch(`${API_URL}${url}`, {
+    console.log('Token retrieved successfully');
+    
+    const requestUrl = `${API_URL}${url}`;
+    console.log('Request URL:', requestUrl);
+    console.log('Request options:', {
+      method: options.method,
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer [TOKEN_REDACTED]',
+        ...(options.headers || {})
+      },
+      body: options.body ? JSON.parse(options.body as string) : undefined
+    });
+    
+    console.log('Sending request...');
+    const startTime = Date.now();
+    const response = await fetch(requestUrl, {
       ...options,
       headers: {
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${token}`,
-        ...options.headers,
+        ...(options.headers || {}),
       },
       credentials: 'include',
     });
+    
+    const endTime = Date.now();
+    console.log(`Request completed in ${endTime - startTime}ms`);
+    console.log('Response status:', response.status, response.statusText);
 
-    // Si recibimos un 401, el token es inválido o expiró
+    // Handle 401 Unauthorized
     if (response.status === 401) {
-      // Limpiar la sesión para forzar un nuevo inicio de sesión
+      console.warn('Authentication required - redirecting to login');
       if (typeof window !== 'undefined') {
         window.location.href = '/login';
       }
       throw new Error('La sesión ha expirado. Por favor, inicia sesión nuevamente.');
     }
 
-    const data: ApiResponse<T> = await response.json().catch(() => ({
-      success: false,
-      message: 'Error al procesar la respuesta del servidor'
-    }));
+    console.log('Parsing response...');
+    let data: ApiResponse<T>;
+    try {
+      data = await response.json();
+      console.log('Response data:', data);
+    } catch (parseError) {
+      console.error('Failed to parse JSON response:', parseError);
+      data = {
+        success: false,
+        message: 'Error al procesar la respuesta del servidor'
+      };
+    }
 
     if (!response.ok || !data.success) {
-      throw new Error(data.message || 'Error en la solicitud al servidor');
+      const errorMessage = data.message || `Error en la solicitud: ${response.status} ${response.statusText}`;
+      console.error('Request failed:', errorMessage);
+      throw new Error(errorMessage);
     }
 
     return data.data as T;
@@ -79,10 +115,13 @@ export const createSection = async (
   courseId: string,
   data: SectionFormValues
 ): Promise<Section> => {
-  return apiRequest<Section>(`/courses/${courseId}/sections`, {
+  console.log('Creating section with data:', { courseId, data });
+  const result = await apiRequest<Section>(`/courses/${courseId}/sections`, {
     method: 'POST',
     body: JSON.stringify(data),
   });
+  console.log('Section created successfully:', result);
+  return result;
 };
 
 /**

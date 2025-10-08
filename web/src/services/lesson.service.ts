@@ -1,14 +1,20 @@
 import { apiRequest } from '@/lib/api';
 import { Lesson, LessonFormValues as ILessonFormValues } from '@/types/lesson';
 
+interface ApiResponse<T> {
+  data: T;
+  success: boolean;
+  message?: string;
+}
+
 /**
  * Get all lessons for a section
  * @param sectionId - ID of the section
  * @returns Promise with array of lessons
  */
 export const getLessonsBySection = async (sectionId: string): Promise<Lesson[]> => {
-  const response = await apiRequest(`/sections/${sectionId}/lessons`);
-  return response.data || [];
+  const response = await apiRequest<ApiResponse<Lesson[]>>(`/sections/${sectionId}/lessons`);
+  return response?.data || [];
 };
 
 /**
@@ -17,7 +23,10 @@ export const getLessonsBySection = async (sectionId: string): Promise<Lesson[]> 
  * @returns Promise with the requested lesson
  */
 export const getLessonById = async (lessonId: string): Promise<Lesson> => {
-  const response = await apiRequest(`/lessons/${lessonId}`);
+  const response = await apiRequest<ApiResponse<Lesson>>(`/lessons/${lessonId}`);
+  if (!response?.data) {
+    throw new Error('Lesson not found');
+  }
   return response.data;
 };
 
@@ -31,10 +40,18 @@ export const createLesson = async (
   sectionId: string,
   data: Omit<ILessonFormValues, 'section'>
 ): Promise<Lesson> => {
-  const response = await apiRequest(`/sections/${sectionId}/lessons`, {
+  const response = await apiRequest<ApiResponse<Lesson>>(`/sections/${sectionId}/lessons`, {
     method: 'POST',
-    body: data
+    body: JSON.stringify(data),
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
+  
+  if (!response?.data) {
+    throw new Error('Failed to create lesson');
+  }
+  
   return response.data;
 };
 
@@ -48,10 +65,18 @@ export const updateLesson = async (
   lessonId: string,
   data: Partial<ILessonFormValues>
 ): Promise<Lesson> => {
-  const response = await apiRequest(`/lessons/${lessonId}`, {
+  const response = await apiRequest<ApiResponse<Lesson>>(`/lessons/${lessonId}`, {
     method: 'PUT',
-    body: data
+    body: JSON.stringify(data),
+    headers: {
+      'Content-Type': 'application/json',
+    },
   });
+  
+  if (!response?.data) {
+    throw new Error('Failed to update lesson');
+  }
+  
   return response.data;
 };
 

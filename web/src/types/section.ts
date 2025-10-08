@@ -58,7 +58,6 @@ export interface SectionFormValues {
   title: string;
   description?: string;
   isPublished: boolean;
-  order: number;
 }
 
 export interface CreateSectionInput {

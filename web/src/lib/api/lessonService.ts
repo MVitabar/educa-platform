@@ -18,6 +18,8 @@ export const getLessonsByCourse = async (courseId: string, token?: string): Prom
   return apiClient.get<{ data: LessonWithProgress[] }>(`/courses/${courseId}/lessons`, { headers });
 };
 
+
+
 // Marcar una lección como completada (esta función es específica de este servicio)
 export const markLessonAsCompleted = async (lessonId: string): Promise<void> => {
   return apiClient.post(`/lessons/${lessonId}/complete`);

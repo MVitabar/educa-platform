@@ -3,30 +3,34 @@
 import { useState, useEffect, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { toast } from 'react-hot-toast';
-import { PlusIcon, PencilIcon, TrashIcon, GripVertical, BookOpenIcon } from 'lucide-react';
+import { PlusIcon, PencilIcon, TrashIcon, BookOpenIcon, GripVertical } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import { SectionForm } from '@/components/forms/SectionForm';
 import { LessonForm } from '@/components/forms/LessonForm';
-import { Section, LessonInSection } from '@/types/section';
+import { LessonInSection, Section, SectionFormValues } from '@/types/section';
+import { LessonFormValues } from '@/types/lesson';
+import { createSection } from '@/services/sectionService';
 import { apiRequest } from '@/lib/api';
 
-interface SectionFormValues {
-  title: string;
-  description?: string;
-  isPublished: boolean;
+
+interface ErrorResponseData {
+  message?: string;
+  error?: string;
+  statusCode?: number;
+  [key: string]: unknown;
 }
 
-interface LessonFormValues {
-  title: string;
-  description?: string;
-  duration: number;
-  isPublished: boolean;
-  isPreview: boolean;
-  videoUrl?: string;
+interface ErrorWithResponse extends Error {
+  response?: {
+    status: number;
+    data: ErrorResponseData;
+  };
+  request?: XMLHttpRequest;
 }
+
 
 export default function CurriculumPage() {
   const { id: courseId } = useParams<{ id: string }>();
@@ -70,42 +74,91 @@ export default function CurriculumPage() {
     // Solo intentar cargar las secciones si hay un courseId
     if (courseId) {
       loadSections();
-    } else {
       setIsLoading(false);
     }
   }, [courseId]);
 
 
-  const handleAddSection = useCallback(async (newSection: Omit<SectionFormValues, 'order'>) => {
-    console.log('=== Creando nueva sección ===');
-    console.log('Datos de la sección:', newSection);
+  const handleAddSection = useCallback(async (newSection: SectionFormValues | Section) => {
+    console.log('=== Iniciando manejo de sección ===');
+    console.log('Datos de la sección recibidos:', newSection);
     
     try {
-      // Crear la sección
-      console.log('Enviando solicitud POST a /sections');
-      const response = await apiRequest<{ data: Section }>(
-        `courses/${courseId}/sections`,
-        {
-          method: 'POST',
-          body: JSON.stringify(newSection)
-        }
-      );
+      // Si ya es un objeto Section (viene del formulario con _id)
+      if ('_id' in newSection) {
+        console.log('Sección ya procesada, actualizando estado local');
+        setSections(prevSections => [...prevSections, newSection]);
+        setIsSectionDialogOpen(false);
+        return newSection;
+      }
       
-      console.log('Sección creada con éxito:', response.data);
+      // Si es un SectionFormValues (caso de respaldo)
+      if (!courseId) {
+        throw new Error('No se encontró el ID del curso');
+      }
+      
+      console.log('Creando nueva sección a través del servicio...');
+      
+      // Usar el servicio para crear la sección
+      const createdSection = await createSection(courseId, newSection);
+      
+      if (!createdSection) {
+        throw new Error('No se pudo crear la sección');
+      }
+      
+      console.log('Sección creada con éxito:', createdSection);
       
       // Agregar la nueva sección al estado
-      setSections(prevSections => [...prevSections, response.data]);
+      setSections(prevSections => [...prevSections, createdSection]);
       
       // Cerrar el diálogo
       setIsSectionDialogOpen(false);
       
       // Mostrar mensaje de éxito
-      toast.success('Sección creada correctamente');
-    } catch (error) {
-      console.error('Error al crear la sección:', error);
-      const errorMessage = error instanceof Error ? error.message : 'Error al crear la sección';
+      toast.success(`Sección "${createdSection.title}" creada correctamente`);
+      
+      return createdSection;
+    } catch (error: unknown) {
+      const err = error as ErrorWithResponse;
+      console.error('Error detallado al crear la sección:', {
+        name: err.name,
+        message: err.message,
+        stack: err.stack,
+        response: err.response
+      });
+      
+      let errorMessage = 'Error al crear la sección';
+      
+      // Manejar diferentes tipos de errores
+      if (err.response) {
+        // Error de respuesta del servidor (4xx, 5xx)
+        const { status, data } = err.response;
+        console.error(`Error del servidor (${status}):`, data);
+        
+        if (status === 400) {
+          errorMessage = data.message || 'Datos de la sección inválidos';
+        } else if (status === 401) {
+          errorMessage = 'No autorizado. Por favor, inicia sesión nuevamente.';
+        } else if (status === 403) {
+          errorMessage = 'No tienes permiso para crear secciones en este curso';
+        } else if (status === 404) {
+          errorMessage = 'Curso no encontrado';
+        } else if (status >= 500) {
+          errorMessage = 'Error del servidor. Por favor, inténtalo de nuevo más tarde.';
+        }
+      } else if (err.request) {
+        // La solicitud fue hecha pero no hubo respuesta
+        console.error('No se recibió respuesta del servidor:', err.request);
+        errorMessage = 'No se pudo conectar con el servidor. Verifica tu conexión a internet.';
+      } else {
+        // Error al configurar la solicitud
+        const errorMsg = error instanceof Error ? error.message : 'Error desconocido';
+        console.error('Error al configurar la solicitud:', errorMsg);
+        errorMessage = `Error: ${errorMsg}`;
+      }
+      
       toast.error(errorMessage);
-      throw error; // Re-lanzar el error para que pueda ser manejado por el formulario
+      throw new Error(errorMessage);
     }
   }, [courseId]); // Add dependency array with courseId
 
@@ -126,7 +179,7 @@ export default function CurriculumPage() {
         contentBlocks: [
           {
             type: 'text',
-            content: newLesson.content || '',
+            content: newLesson.title || '',
             order: 0
           }
         ]
@@ -160,6 +213,80 @@ export default function CurriculumPage() {
     } catch (error) {
       console.error('Error al eliminar la lección:', error);
       toast.error(error instanceof Error ? error.message : 'Error al eliminar la lección');
+    }
+  };
+  const handleDeleteSection = async (courseId: string, sectionId: string) => {
+    // Find the section to get its title for the confirmation message
+    const section = sections.find(s => s._id === sectionId);
+    const sectionTitle = section?.title || 'esta sección';
+    
+    // Show confirmation dialog
+    if (!confirm(`¿Estás seguro de que deseas eliminar la sección "${sectionTitle}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    
+    try {
+      // Use the apiRequest utility which handles the base URL and authentication
+      await apiRequest(`courses/${courseId}/sections/${sectionId}`, {
+        method: 'DELETE'
+      });
+
+      // Remove the section from the UI
+      setSections(prevSections => 
+        prevSections.filter(section => section._id !== sectionId)
+      );
+      
+      toast.success(`Sección "${sectionTitle}" eliminada exitosamente`);
+    } catch (error) {
+      console.error('Error al eliminar la sección:', error);
+      toast.error(error instanceof Error ? error.message : 'Error al eliminar la sección');
+      throw error;
+    }
+  };
+  const handleDeleteLesson = async (sectionId: string, lessonId: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta lección? Esta acción no se puede deshacer.')) {
+      return;
+    }
+  
+    try {
+      if (!lessonId) {
+        throw new Error('ID de lección inválido');
+      }
+  
+      // Use the full lesson ID instead of extracting just the last part
+      await apiRequest(`lessons/${lessonId}`, { 
+        method: 'DELETE' 
+      });
+      
+      // Rest of the function remains the same
+      setSections(prevSections => 
+        prevSections.map(section => {
+          if (section._id === sectionId) {
+            const updatedLessons = section.lessons?.filter(lesson => lesson._id !== lessonId) || [];
+            return {
+              ...section,
+              lessons: updatedLessons,
+              lessonCount: updatedLessons.length,
+              duration: updatedLessons.reduce((total, lesson) => total + (lesson.duration || 0), 0)
+            };
+          }
+          return section;
+        })
+      );
+      
+      toast.success('Lección eliminada exitosamente');
+    } catch (error) {
+      console.error('Error al eliminar la lección:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Error al eliminar la lección';
+      toast.error(errorMessage);
+      
+      // Refresh the sections to ensure consistency
+      try {
+        const response = await apiRequest<Section[]>(`courses/${courseId}/sections?includeLessons=true`);
+        setSections(Array.isArray(response) ? response : []);
+      } catch (refreshError) {
+        console.error('Error al actualizar las secciones:', refreshError);
+      }
     }
   };
 
@@ -249,7 +376,7 @@ export default function CurriculumPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => handleDeleteSection(section._id)}
+                        onClick={() => handleDeleteSection(courseId, section._id)}
                       >
                         <TrashIcon className="h-4 w-4 text-destructive" />
                       </Button>
