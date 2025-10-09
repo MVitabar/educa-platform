@@ -345,7 +345,8 @@ export default function SectionLessonsPage() {
             {lessons.map((lesson: LessonInSection) => (
               <Card
                 key={lesson._id}
-                className="hover:shadow-md transition-shadow overflow-hidden"
+                className="hover:shadow-md transition-shadow overflow-hidden cursor-pointer hover:border-primary"
+                onClick={() => router.push(`/instructor/courses/${courseId}/sections/${sectionId}/lessons/${lesson._id}`)}
               >
                 <CardContent className="p-0">
                   <div className="flex">
