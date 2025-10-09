@@ -106,9 +106,10 @@ const handleSubmit = async (e: React.FormEvent) => {
     
     // Get the returnTo URL from query params or use the default dashboard
     const searchParams = new URLSearchParams(window.location.search);
-    const returnTo = searchParams.get('returnTo') || `/${userRole}/dashboard`;
+    const returnTo = searchParams.get('returnTo') || searchParams.get('callbackUrl') || `/${userRole}/dashboard`;
     
-    router.push(returnTo);
+    // Use replace instead of push to prevent going back to login page
+    router.replace(returnTo);
     
   } catch (err) {
     const errorMessage = err instanceof Error ? err.message : 'Error al iniciar sesión';

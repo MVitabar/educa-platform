@@ -36,6 +36,7 @@ export interface Lesson {
   section: Section; // Section ID y detalles
   order: number;
   isFree: boolean;
+  isPreview: boolean;
   isPublished: boolean;
   createdAt: string;
   updatedAt: string;

@@ -1,19 +1,4 @@
 import apiClient from './apiClient';
-import { getServerSession } from 'next-auth';
-import { authOptions } from '@/app/api/auth/[...nextauth]/route';
-
-// Helper function to get the auth token for server components
-async function getAuthToken() {
-  if (typeof window !== 'undefined') {
-    // Client-side: use the storage utility
-    const storage = (await import('@/lib/storage')).default;
-    return storage.getToken();
-  } else {
-    // Server-side: get the session
-    const session = await getServerSession(authOptions);
-    return session?.accessToken || null;
-  }
-}
 
 // Tipos para los datos de los cursos
 export interface Course {
@@ -55,10 +40,81 @@ export interface CourseWithProgress extends Course {
 
 // Obtener un curso por su slug
 export const getCourseBySlug = async (slug: string, token?: string): Promise<Course> => {
-  const authToken = token || await getAuthToken();
-  return apiClient.get<{ data: Course }>(`/courses/slug/${slug}`, {
-    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {}
-  }).then(res => res.data);
+  const headers: Record<string, string> = {};
+  
+  // Add auth token if provided
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  
+  try {
+    // Try authenticated endpoint first if token is available
+    if (token) {
+      try {
+        const response = await apiClient.axiosInstance.request<{ data: Course } | Course>({
+          method: 'get',
+          url: `/courses/slug/${slug}`,
+          headers,
+          validateStatus: (status: number) => status < 500
+        });
+        
+        if (response.status >= 200 && response.status < 300) {
+          const responseData = response.data;
+          return (responseData as { data?: Course }).data || responseData as Course;
+        }
+      } catch (authError) {
+        console.warn('Error fetching from authenticated endpoint, falling back to public:', authError);
+      }
+    }
+
+    // Fall back to public endpoint
+    try {
+      const publicResponse = await apiClient.axiosInstance.request<{ data: Course[] } | Course[]>({
+        method: 'get',
+        url: '/courses',
+        params: { 
+          status: 'published',
+          slug,
+          isPublic: 'true',
+          limit: 1
+        },
+        headers: {}
+      });
+
+      // Process public response
+      const processPublicResponse = (data: Course[] | { data: Course | Course[] } | null | undefined): Course | undefined => {
+        if (!data) return undefined;
+        
+        // Handle array response
+        if (Array.isArray(data)) {
+          return data[0]; // Return first match
+        }
+        
+        // Handle { data: Course[] } or { data: Course }
+        if (data && typeof data === 'object' && 'data' in data) {
+          const responseData = data.data;
+          return Array.isArray(responseData) ? responseData[0] : responseData;
+        }
+        
+        return undefined;
+      };
+
+      const publicCourse = processPublicResponse(publicResponse.data);
+      if (publicCourse) {
+        return publicCourse;
+      }
+    } catch (publicError) {
+      console.error('Error fetching from public endpoint:', publicError);
+      throw new Error('No se pudo cargar el curso. Por favor, inténtalo de nuevo más tarde.');
+    }
+    
+    // If we get here, the course was not found
+    throw new Error('Curso no encontrado');
+    
+  } catch (error) {
+    console.error('Error al obtener el curso:', error);
+    throw error instanceof Error ? error : new Error('Error al cargar el curso');
+  }
 };
 
 // Obtener cursos populares

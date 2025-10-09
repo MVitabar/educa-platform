@@ -29,8 +29,9 @@ type CustomAxiosRequestConfig = AxiosRequestConfig & {
   params?: Record<string, string | number | boolean | undefined>;
 };
 
+// ApiClient class that wraps axios instance
 class ApiClient {
-  private axiosInstance: AxiosInstance;
+  public axiosInstance: AxiosInstance;
 
   constructor() {
     this.axiosInstance = axios.create({
@@ -227,6 +228,7 @@ class ApiClient {
   }
 }
 
+// Create and export the apiClient instance
 const apiClient = new ApiClient();
 
 export default apiClient;
