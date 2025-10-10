@@ -80,6 +80,33 @@ type CourseLesson = {
 
 type LessonWithProgress = CourseLesson & {
   progress?: number;
+  sectionId?: string;
+  description?: string;
+  videoUrl?: string;
+  order?: number;
+  isFree?: boolean;
+  isPreview?: boolean;
+  isPublished?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+  contentBlocks?: Array<{
+    type: string;
+    content: string | Record<string, unknown>;
+    order?: number;
+    _id?: string;
+  }>;
+  resources?: Array<{
+    _id: string;
+    title: string;
+    url: string;
+    type: 'file' | 'link' | 'video' | 'document';
+    size?: number;
+    duration?: number;
+    createdAt?: string;
+    updatedAt?: string;
+  }>;
+  section?: string;
+  course?: string;
 };
 
 
@@ -90,28 +117,136 @@ interface PageProps {
   searchParams?: { [key: string]: string | string[] | undefined };
 }
 
-// Uncomment and implement this function when needed
-// async function getCourseSections(courseId: string, token: string) {
-//   try {
-//     const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/v1/courses/${courseId}/sections`, {
-//       headers: {
-//         'Authorization': `Bearer ${token}`,
-//         'Content-Type': 'application/json'
-//       },
-//       next: { revalidate: 60 } // Cache for 60 seconds
-//     });
+async function getCourseSections(courseId: string, token?: string): Promise<Section[]> {
+  try {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
     
-//     if (!response.ok) {
-//       console.error('Error fetching sections:', await response.text());
-//       return { data: [] };
-//     }
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
     
-//     return response.json();
-//   } catch (error) {
-//     console.error('Error fetching sections:', error);
-//     return { data: [] };
-//   }
-// }
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_API_URL}/courses/${courseId}/sections`,
+      {
+        headers,
+        next: { revalidate: 60 } // Cache for 60 seconds
+      }
+    );
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error('Error fetching course sections:', errorText);
+      return [];
+    }
+    
+    const data = await response.json();
+    return Array.isArray(data) ? data : data.data || [];
+  } catch (error) {
+    console.error('Error fetching course sections:', error);
+    return [];
+  }
+}
+
+async function getCourseLessons(courseId: string, token?: string): Promise<LessonWithProgress[]> {
+  try {
+    const headers: HeadersInit = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+    
+    const apiBase = process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, '');
+    if (!apiBase) {
+      console.error('NEXT_PUBLIC_API_URL is not defined');
+      return [];
+    }
+
+    // First, get all sections for the course
+    try {
+      const sectionsResponse = await fetch(
+        `${apiBase}/courses/${courseId}/sections`,
+        { 
+          headers,
+          next: { revalidate: 60 } // Cache for 60 seconds
+        }
+      );
+      
+      if (!sectionsResponse.ok) {
+        const errorText = await sectionsResponse.text();
+        console.error('Error fetching sections:', sectionsResponse.status, errorText);
+        return [];
+      }
+      
+      const sectionsData = await sectionsResponse.json();
+      const sections = Array.isArray(sectionsData) ? sectionsData : sectionsData.data || [];
+      
+      if (!Array.isArray(sections)) {
+        return [];
+      }
+      
+      // Then fetch lessons for each section in parallel
+      const sectionPromises = sections.map(async (section) => {
+        try {
+          const lessonsResponse = await fetch(
+            `${apiBase}/courses/${courseId}/sections/${section._id}/lessons`,
+            { 
+              headers,
+              next: { revalidate: 60 } // Cache for 60 seconds
+            }
+          );
+          
+          if (!lessonsResponse.ok) {
+            console.error(`Error fetching lessons for section ${section._id}:`, lessonsResponse.status);
+            return [];
+          }
+          
+          const lessonsData = await lessonsResponse.json();
+          const sectionLessons = Array.isArray(lessonsData) ? lessonsData : lessonsData.data || [];
+          
+          return sectionLessons.map((lesson: Omit<LessonWithProgress, 'sectionId' | 'section'>) => ({
+            ...lesson,
+            sectionId: section._id,
+            section: section.title,
+            // Ensure all required fields have default values
+            description: lesson.description || '',
+            videoUrl: lesson.videoUrl || '',
+            order: typeof lesson.order === 'number' ? lesson.order : 0,
+            isFree: Boolean(lesson.isFree),
+            isPreview: Boolean(lesson.isPreview || lesson.preview),
+            isPublished: lesson.isPublished !== false,
+            createdAt: lesson.createdAt || new Date().toISOString(),
+            updatedAt: lesson.updatedAt || new Date().toISOString(),
+            contentBlocks: Array.isArray(lesson.contentBlocks) ? lesson.contentBlocks : [],
+            resources: Array.isArray(lesson.resources) ? lesson.resources : [],
+            course: courseId,
+            // Default values for required fields from CourseLesson interface
+            type: lesson.type || 'video',
+            completed: Boolean(lesson.completed),
+            duration: Number(lesson.duration) || 0
+          }));
+        } catch (error) {
+          console.error(`Error processing section ${section._id}:`, error);
+          return [];
+        }
+      });
+      
+      // Wait for all section promises to resolve and flatten the results
+      const allLessons = (await Promise.all(sectionPromises)).flat();
+      return allLessons;
+      
+    } catch (error) {
+      console.error('Error in getCourseLessons:', error);
+      return [];
+    }
+  } catch (error) {
+    console.error('Unexpected error in getCourseLessons:', error);
+    return [];
+  }
+}
 
 export default async function CoursePage({ params, searchParams: searchParamsProp }: PageProps) {
   // Get session and destructure params in parallel
@@ -135,7 +270,41 @@ export default async function CoursePage({ params, searchParams: searchParamsPro
     // Get course data with authentication if available
     const courseResponse = await getCourseBySlug(slug, session?.accessToken);
     const course = courseResponse as unknown as Course;
-    const sections: Section[] = []; // Initialize empty sections array with type
+    
+    // Get sections and lessons in parallel
+    const [sections, allLessons] = await Promise.all([
+      getCourseSections(course._id, session?.accessToken as string),
+      getCourseLessons(course._id, session?.accessToken as string)
+    ]);
+    
+    // Enrich sections with their respective lessons
+    const sectionsWithLessons = sections.map(section => {
+      // Find lessons that belong to this section
+      const sectionLessons = allLessons
+        .filter(lesson => lesson.sectionId === section._id || lesson.section === section._id)
+        .map(lesson => ({
+          ...lesson,
+          // Ensure all required properties have default values
+          sectionId: lesson.sectionId || section._id,
+          description: lesson.description || '',
+          videoUrl: lesson.videoUrl || '',
+          order: typeof lesson.order === 'number' ? lesson.order : 0,
+          isFree: Boolean(lesson.isFree),
+          isPreview: Boolean(lesson.isPreview || lesson.preview),
+          isPublished: lesson.isPublished !== false,
+          createdAt: lesson.createdAt || new Date().toISOString(),
+          updatedAt: lesson.updatedAt || new Date().toISOString(),
+          contentBlocks: Array.isArray(lesson.contentBlocks) ? lesson.contentBlocks : [],
+          resources: Array.isArray(lesson.resources) ? lesson.resources : [],
+          section: section.title,
+          course: course._id
+        }));
+
+      return {
+        ...section,
+        lessons: sectionLessons
+      };
+    });
     
     // Process course data with proper type safety
     const courseImage = typeof course?.image === 'string' ? course.image : 
@@ -172,38 +341,41 @@ export default async function CoursePage({ params, searchParams: searchParamsPro
     // Initialize lessons array with proper type
     let lessons: LessonWithProgress[] = [];
     
-    // Check if there are any sections with lessons
-    const hasSections = sections.some((section) => (section.lessons?.length ?? 0) > 0);
-    
-    if (hasSections) {
-      try {
-        lessons = sections.flatMap((section) => 
-          (section.lessons ?? []).map((lesson) => ({
-            _id: lesson._id,
-            title: lesson.title,
-            description: lesson.description ?? '',
-            contentBlocks: [],
-            duration: lesson.duration ?? 0,
-            videoUrl: '',
-            resources: [],
-            section: section.title,
-            progress: 0,
-            course: course._id,
-            order: 0,
-            isFree: false,
-            isPreview: lesson.preview ?? false,
-            isPublished: true,
-            createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
-            type: lesson.type ?? 'video',
-            completed: lesson.completed ?? false
-          }))
-        );
-      } catch (error) {
-        console.error('Error processing lessons:', error);
-        // Continue with empty lessons array if there's an error
-      }
+    // Flatten lessons from all sections
+    try {
+      lessons = sectionsWithLessons.flatMap(section => 
+        section.lessons.map(lesson => ({
+          ...lesson,
+          // Ensure all required fields are set
+          _id: lesson._id,
+          title: lesson.title,
+          description: lesson.description || '',
+          duration: Number(lesson.duration) || 0,
+          type: lesson.type || 'video',
+          completed: Boolean(lesson.completed),
+          preview: Boolean(lesson.preview || lesson.isPreview),
+          progress: typeof lesson.progress === 'number' ? Math.min(100, Math.max(0, lesson.progress)) : 0,
+          section: lesson.section || section.title,
+          sectionId: lesson.sectionId || section._id,
+          course: lesson.course || course._id,
+          videoUrl: lesson.videoUrl || '',
+          order: typeof lesson.order === 'number' ? lesson.order : 0,
+          isFree: Boolean(lesson.isFree),
+          isPreview: Boolean(lesson.isPreview || lesson.preview),
+          isPublished: lesson.isPublished !== false,
+          createdAt: lesson.createdAt || new Date().toISOString(),
+          updatedAt: lesson.updatedAt || new Date().toISOString(),
+          contentBlocks: Array.isArray(lesson.contentBlocks) ? lesson.contentBlocks : [],
+          resources: Array.isArray(lesson.resources) ? lesson.resources : []
+        }))
+      );
+    } catch (error) {
+      console.error('Error processing lessons:', error);
+      // Continue with empty lessons array if there's an error
+      lessons = [];
     }
+    
+    // Sections with lessons are already handled in the sectionsWithLessons array
     
     const totalDuration = Math.round(lessons.reduce((total: number, lesson: LessonWithProgress) => 
       total + (Number(lesson.duration) || 0), 0) / 60);
